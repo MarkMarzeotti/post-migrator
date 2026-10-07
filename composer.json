@@ -1,0 +1,23 @@
+{
+	"minimum-stability": "stable",
+	"scripts": {
+		"phpcs": "phpcs",
+		"phpcbf": "phpcbf"
+	},
+	"require-dev": {
+		"squizlabs/php_codesniffer": "^3.8",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+		"digitalimpulse/php-coding-standards": "v0.1.1"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"repositories": [
+		{
+			"type": "vcs",
+			"url": "https://github.com/demanddrive/coding-standards"
+		}
+	]
+}

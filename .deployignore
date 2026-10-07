@@ -1,0 +1,11 @@
+.*
+*.sql
+mcp.log
+node_modules/
+src/
+package.json
+package-lock.json
+composer.json
+composer.lock
+webpack.config.js
+postcss.config.js

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [],
+    "ask": []
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ],
+  "extraKnownMarketplaces": {
+    "demanddrive": {
+      "source": {
+        "source": "git",
+        "url": "git@github.com:demanddrive/claude-skills.git"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "dd@demanddrive": true
+  }
+}

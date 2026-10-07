@@ -1,0 +1,19 @@
+# Compiled assets
+node_modules/
+/vendor/
+dist/
+
+# we use npm now
+yarn.lock
+
+# OS Files
+.DS_Store
+
+# environment & local files
+.env
+.cursor/mcp.json
+.mcp.json
+.claude/settings.local.json
+.playwright-mcp/
+*.sql
+*.log

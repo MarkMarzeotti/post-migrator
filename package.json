@@ -1,0 +1,46 @@
+{
+	"name": "post-migrator",
+	"version": "0.1.0",
+	"author": "Mark Marzeotti",
+	"private": true,
+	"scripts": {
+		"build": "npm run build:js && npm run build:css",
+		"build:js": "webpack --mode production",
+		"build:css": "postcss src/css/admin/style.css -o dist/css/admin.css",
+		"watch:js": "webpack --mode development --watch",
+		"watch:css": "postcss src/css/admin/style.css -o dist/css/admin.css --watch",
+		"phpcs": "composer phpcs",
+		"phpcbf": "composer phpcbf",
+		"eslint": "eslint src/js --max-warnings=0",
+		"eslint:fix": "eslint --fix src/js",
+		"stylelint": "stylelint src/css/**/*.css",
+		"stylelint:fix": "stylelint --fix src/css/**/*.css",
+		"test": "composer phpcs && npm run eslint && npm run stylelint"
+	},
+	"devDependencies": {
+		"@babel/core": "^7.18.6",
+		"@babel/plugin-transform-react-jsx": "^7.19.0",
+		"@babel/preset-env": "^7.18.6",
+		"@digitalimpulse/coding-standards": "github:demanddrive/coding-standards#78d476b4ea49ce738bc9c26e85657dde949081ad",
+		"@typescript-eslint/eslint-plugin": "^5.53.0",
+		"@typescript-eslint/parser": "^5.53.0",
+		"@wordpress/eslint-plugin": "^17.12.0",
+		"@wordpress/stylelint-config": "^20.0.2",
+		"autoprefixer": "^10.4.21",
+		"babel-loader": "^8.2.5",
+		"cssnano": "^7.1.2",
+		"eslint": "^8.20.0",
+		"eslint-webpack-plugin": "^3.2.0",
+		"postcss": "^8.4.31",
+		"postcss-cli": "^11.0.0",
+		"prettier": "^3.2.5",
+		"stylelint": "^14.9.1",
+		"stylelint-order": "^6.0.3",
+		"stylelint-semantic-groups": "^1.2.0",
+		"webpack": "^5.88.2",
+		"webpack-cli": "^4.10.0"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	}
+}
