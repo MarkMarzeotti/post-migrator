@@ -177,6 +177,7 @@ class Connection_Client {
 			return array(
 				'success' => false,
 				'code'    => 'connection_unreachable',
+				'message' => $response->get_error_message(),
 			);
 		}
 
@@ -185,6 +186,9 @@ class Connection_Client {
 		$decoded     = is_array( $decoded ) ? $decoded : array();
 
 		if ( 200 === $status_code ) {
+			// Merging the decoded body in is safe here: a 200 response is always
+			// our own REST_Controller's { matches: ... } / { results: ... }
+			// payload shape, which never collides with the success/code keys.
 			return array_merge(
 				array(
 					'success' => true,
@@ -194,22 +198,41 @@ class Connection_Client {
 			);
 		}
 
-		if ( 401 === $status_code || 403 === $status_code ) {
-			return array_merge(
-				array(
-					'success' => false,
-					'code'    => 'connection_unauthorized',
-				),
-				$decoded
+		// A non-200 body is a WP_Error's serialized shape, which carries its own
+		// top-level "code" -- deliberately NOT merged in wholesale, so it can't
+		// clobber our own classification below. Only its human-readable message
+		// is worth keeping, so the caller can show the target site's own
+		// explanation of what went wrong.
+		$remote_message = isset( $decoded['message'] ) ? (string) $decoded['message'] : '';
+
+		if ( 401 === $status_code ) {
+			return array(
+				'success' => false,
+				'code'    => 'connection_invalid_key',
+				'message' => $remote_message,
 			);
 		}
 
-		return array_merge(
-			array(
+		if ( 403 === $status_code ) {
+			return array(
 				'success' => false,
-				'code'    => 'connection_unexpected_response',
-			),
-			$decoded
+				'code'    => 'connection_forbidden',
+				'message' => $remote_message,
+			);
+		}
+
+		if ( 404 === $status_code ) {
+			return array(
+				'success' => false,
+				'code'    => 'connection_version_mismatch',
+				'message' => $remote_message,
+			);
+		}
+
+		return array(
+			'success' => false,
+			'code'    => 'connection_unexpected_response',
+			'message' => $remote_message,
 		);
 	}
 }

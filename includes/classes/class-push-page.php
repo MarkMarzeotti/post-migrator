@@ -121,6 +121,7 @@ class Push_Page {
 		$search    = $this->get_search_term();
 		?>
 		<h2><?php esc_html_e( 'Select Content to Push', 'post-migrator' ); ?></h2>
+		<?php $this->render_target_banner(); ?>
 		<form method="get" action="<?php echo esc_url( admin_url( 'tools.php' ) ); ?>">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
 			<p>
@@ -203,16 +204,45 @@ class Push_Page {
 		}
 		?>
 		<h2><?php esc_html_e( 'Review and Confirm', 'post-migrator' ); ?></h2>
+		<?php $this->render_target_banner(); ?>
 		<p><?php esc_html_e( 'Choose what each selected item should do on the other site.', 'post-migrator' ); ?></p>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_push_confirm" />
 			<input type="hidden" name="push_batch_token" value="<?php echo esc_attr( $token ); ?>" />
 			<?php wp_nonce_field( 'post_migrator_push_confirm' ); ?>
 			<?php foreach ( $batch['items'] as $origin_id => $item ) : ?>
-				<?php $this->render_review_row( (int) $origin_id, $item, $token ); ?>
+				<?php $this->render_review_row( (int) $origin_id, $item ); ?>
 			<?php endforeach; ?>
+			<p>
+				<strong>
+					<?php
+					printf(
+						/* translators: 1: number of items, 2: the target site's URL */
+						esc_html__( 'You are about to push %1$d item(s) to %2$s.', 'post-migrator' ),
+						count( $batch['items'] ),
+						esc_html( Target_Store::get_target_url() )
+					);
+					?>
+				</strong>
+			</p>
 			<?php submit_button( __( 'Push Selected Content', 'post-migrator' ) ); ?>
 		</form>
+		<?php
+		// Rendered as siblings of the main form above, never nested inside it
+		// -- see the comment in render_review_row() for why. Each one carries
+		// no visible content of its own; the matching row's search input and
+		// button (inside the main form) target it via their "form" attribute.
+		foreach ( array_keys( $batch['items'] ) as $origin_id ) :
+			?>
+			<form id="post-migrator-push-search-<?php echo esc_attr( (string) $origin_id ); ?>" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="post_migrator_push_manual_search" />
+				<input type="hidden" name="push_batch_token" value="<?php echo esc_attr( $token ); ?>" />
+				<input type="hidden" name="origin_id" value="<?php echo esc_attr( (string) $origin_id ); ?>" />
+				<?php wp_nonce_field( 'post_migrator_push_manual_search' ); ?>
+			</form>
+			<?php
+		endforeach;
+		?>
 		<p>
 			<a href="
 			<?php
@@ -239,13 +269,19 @@ class Push_Page {
 	/**
 	 * Render a single selected item's row on the review step.
 	 *
-	 * @param int    $origin_id The item's origin post ID.
-	 * @param array  $item      The item's match data.
-	 * @param string $token     The current batch's transient token.
+	 * @param int   $origin_id The item's origin post ID.
+	 * @param array $item      The item's match data.
 	 * @return void
 	 */
-	private function render_review_row( int $origin_id, array $item, string $token ) {
-		$field_name           = 'action[' . $origin_id . ']';
+	private function render_review_row( int $origin_id, array $item ) {
+		// Deliberately not named "action[...]": the main form already has a
+		// hidden input named "action" (WordPress's own admin-post.php routing
+		// field, value "post_migrator_push_confirm"). Both would normalize to
+		// the same top-level POST key, and PHP would silently convert that
+		// field from a string to an array -- which sanitize_text_field() then
+		// reduces to '', making admin-post.php treat the request as having no
+		// action at all and silently do nothing.
+		$field_name           = 'item_action[' . $origin_id . ']';
 		$has_confident        = null !== $item['origin_match'] || null !== $item['slug_match'];
 		$has_overwrite_option = $has_confident || ! empty( $item['manual_matches'] );
 		?>
@@ -319,16 +355,29 @@ class Push_Page {
 				</label><br />
 			<?php endforeach; ?>
 
+			<?php
+			// The search controls below are visually inside this row but are
+			// bound, via the "form" attribute, to a standalone <form> rendered
+			// after the main confirm form closes (see render_search_forms()).
+			// A <form> cannot be nested inside another <form> -- browsers merge
+			// the two into one, stranding whichever submit button comes later
+			// in the markup outside of any form at all, so it silently stops
+			// being submittable. This keeps every <form> on the page a sibling,
+			// never a descendant, of another.
+			$search_form_id = 'post-migrator-push-search-' . $origin_id;
+			?>
 			<details>
 				<summary><?php esc_html_e( 'Search for a different post to overwrite', 'post-migrator' ); ?></summary>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-					<input type="hidden" name="action" value="post_migrator_push_manual_search" />
-					<input type="hidden" name="push_batch_token" value="<?php echo esc_attr( $token ); ?>" />
-					<input type="hidden" name="origin_id" value="<?php echo esc_attr( (string) $origin_id ); ?>" />
-					<?php wp_nonce_field( 'post_migrator_push_manual_search' ); ?>
-					<input type="search" name="search" class="regular-text" placeholder="<?php esc_attr_e( 'Title, slug, or ID', 'post-migrator' ); ?>" />
-					<?php submit_button( __( 'Search', 'post-migrator' ), 'secondary', 'submit', false ); ?>
-				</form>
+				<input type="search" name="search" form="<?php echo esc_attr( $search_form_id ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Title, slug, or ID', 'post-migrator' ); ?>" />
+				<?php
+				submit_button(
+					__( 'Search', 'post-migrator' ),
+					'secondary',
+					'submit',
+					false,
+					array( 'form' => $search_form_id )
+				);
+				?>
 			</details>
 
 			<?php if ( $has_overwrite_option ) : ?>
@@ -360,6 +409,7 @@ class Push_Page {
 		}
 		?>
 		<h2><?php esc_html_e( 'Push Results', 'post-migrator' ); ?></h2>
+		<?php $this->render_target_banner(); ?>
 		<table class="widefat striped">
 			<thead>
 				<tr>
@@ -389,6 +439,28 @@ class Push_Page {
 			</tbody>
 		</table>
 		<p><a class="button button-primary" href="<?php echo esc_url( admin_url( 'tools.php?page=' . Migrate_Page::PAGE_SLUG ) ); ?>"><?php esc_html_e( 'Back to Migrate', 'post-migrator' ); ?></a></p>
+		<?php
+	}
+
+	/**
+	 * Render a prominent, repeated reminder of which site this push is going to,
+	 * so the user can always confirm they're acting on the right destination.
+	 *
+	 * @return void
+	 */
+	private function render_target_banner() {
+		?>
+		<div class="notice notice-info inline">
+			<p>
+				<?php
+				printf(
+					/* translators: %s: the target site's URL */
+					esc_html__( 'Target site: %s', 'post-migrator' ),
+					'<strong>' . esc_html( Target_Store::get_target_url() ) . '</strong>'
+				);
+				?>
+			</p>
+		</div>
 		<?php
 	}
 

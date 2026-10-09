@@ -205,7 +205,11 @@ class Form_Handler {
 		);
 
 		if ( ! $match_result['success'] ) {
-			$this->redirect_with_notice( 'push_match_check_failed', Push_Page::PAGE_SLUG );
+			$this->redirect_with_notice(
+				$this->connection_failure_notice( $match_result ),
+				Push_Page::PAGE_SLUG,
+				$match_result['message'] ?? ''
+			);
 		}
 
 		foreach ( $items as $origin_id => &$item ) {
@@ -262,7 +266,11 @@ class Form_Handler {
 			);
 
 			if ( ! $search_result['success'] ) {
-				$this->redirect_with_notice( 'push_search_failed', Push_Page::PAGE_SLUG );
+				$this->redirect_with_notice(
+					$this->connection_failure_notice( $search_result ),
+					Push_Page::PAGE_SLUG,
+					$search_result['message'] ?? ''
+				);
 			}
 
 			$batch['items'][ $origin_id ]['manual_matches'] = array_merge(
@@ -306,10 +314,13 @@ class Form_Handler {
 			$this->redirect_with_notice( 'push_batch_expired', Push_Page::PAGE_SLUG );
 		}
 
+		// Read from "item_action", not "action": the latter is WordPress's own
+		// admin-post.php routing field (see the comment in
+		// Push_Page::render_review_row() for why they must never collide).
 		$submitted_actions = array();
 
-		if ( isset( $_POST['action'] ) && is_array( $_POST['action'] ) ) {
-			$submitted_actions = array_map( 'sanitize_text_field', wp_unslash( $_POST['action'] ) );
+		if ( isset( $_POST['item_action'] ) && is_array( $_POST['item_action'] ) ) {
+			$submitted_actions = array_map( 'sanitize_text_field', wp_unslash( $_POST['item_action'] ) );
 		}
 
 		$submitted_slugs = array();
@@ -375,7 +386,11 @@ class Form_Handler {
 		Transient_Session::delete( 'push_batch', $token );
 
 		if ( ! $apply_result['success'] ) {
-			$this->redirect_with_notice( 'push_match_check_failed', Push_Page::PAGE_SLUG );
+			$this->redirect_with_notice(
+				$this->connection_failure_notice( $apply_result ),
+				Push_Page::PAGE_SLUG,
+				$apply_result['message'] ?? ''
+			);
 		}
 
 		$has_errors   = false;
@@ -463,18 +478,40 @@ class Form_Handler {
 	 *
 	 * @param string $notice_code The notice code to display.
 	 * @param string $page_slug   The page slug to redirect back to.
+	 * @param string $detail      Optional short free-text detail to append to the notice.
 	 * @return void
 	 */
-	private function redirect_with_notice( string $notice_code, string $page_slug ) {
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'      => $page_slug,
-					'pm_notice' => $notice_code,
-				),
-				admin_url( 'tools.php' )
-			)
+	private function redirect_with_notice( string $notice_code, string $page_slug, string $detail = '' ) {
+		$args = array(
+			'page'      => $page_slug,
+			'pm_notice' => $notice_code,
 		);
+
+		if ( '' !== $detail ) {
+			$args['pm_notice_detail'] = $detail;
+		}
+
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'tools.php' ) ) );
 		exit;
+	}
+
+	/**
+	 * Map a failed Connection_Client result to the notice code that accurately
+	 * describes why the request to the other site failed -- an invalid key, the
+	 * other site being configured to reject this kind of connection, a likely
+	 * plugin version mismatch, an unreachable site, or anything else unexpected.
+	 *
+	 * @param array $result A Connection_Client result array with 'success' => false.
+	 * @return string
+	 */
+	private function connection_failure_notice( array $result ): string {
+		$map = array(
+			'connection_invalid_key'      => 'push_connection_invalid_key',
+			'connection_forbidden'        => 'push_connection_forbidden',
+			'connection_version_mismatch' => 'push_connection_version_mismatch',
+			'connection_unreachable'      => 'push_connection_unreachable',
+		);
+
+		return $map[ $result['code'] ?? '' ] ?? 'push_connection_unexpected';
 	}
 }
