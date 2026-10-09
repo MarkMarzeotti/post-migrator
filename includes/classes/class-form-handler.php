@@ -75,6 +75,8 @@ class Form_Handler {
 		$target_url = esc_url_raw( $target_url );
 		$target_key = isset( $_POST['target_key'] ) ? sanitize_text_field( wp_unslash( $_POST['target_key'] ) ) : '';
 
+		Target_Store::save( $target_url, $target_key );
+
 		if ( '' === $target_url || '' === $target_key || ! Connection_Client::validate_target_url( $target_url ) ) {
 			$this->redirect_with_notice( 'connection_invalid_url' );
 		}

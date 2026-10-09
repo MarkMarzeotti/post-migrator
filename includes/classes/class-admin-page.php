@@ -68,7 +68,7 @@ class Admin_Page {
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 			<?php
 			$this->render_notices();
-			$this->render_key_section();
+			$this->render_connection_info_section();
 			$this->render_test_connection_section();
 			?>
 		</div>
@@ -111,16 +111,27 @@ class Admin_Page {
 	}
 
 	/**
-	 * Render this site's key, with a button to regenerate it.
+	 * Render this site's URL and key, with a button to regenerate the key.
 	 *
 	 * @return void
 	 */
-	private function render_key_section() {
+	private function render_connection_info_section() {
 		?>
-		<h2><?php esc_html_e( 'Your Key', 'post-migrator' ); ?></h2>
-		<p><?php esc_html_e( 'Share this key with the other site to allow it to connect to this site.', 'post-migrator' ); ?></p>
+		<h2><?php esc_html_e( 'Your Connection Details', 'post-migrator' ); ?></h2>
+		<p><?php esc_html_e( 'Share these with the other site to allow it to connect to this site.', 'post-migrator' ); ?></p>
 		<p>
-			<input type="text" readonly="readonly" class="regular-text code" value="<?php echo esc_attr( Key_Manager::get_key() ); ?>" />
+			<label for="post-migrator-site-url"><?php esc_html_e( 'Site URL', 'post-migrator' ); ?></label><br />
+			<span class="post-migrator-field-row">
+				<input type="text" id="post-migrator-site-url" readonly="readonly" class="regular-text code" value="<?php echo esc_url( home_url() ); ?>" />
+				<button type="button" class="button post-migrator-copy" data-copy-target="post-migrator-site-url"><?php esc_html_e( 'Copy', 'post-migrator' ); ?></button>
+			</span>
+		</p>
+		<p>
+			<label for="post-migrator-key"><?php esc_html_e( 'Key', 'post-migrator' ); ?></label><br />
+			<span class="post-migrator-field-row">
+				<input type="text" id="post-migrator-key" readonly="readonly" class="regular-text code" value="<?php echo esc_attr( Key_Manager::get_key() ); ?>" />
+				<button type="button" class="button post-migrator-copy" data-copy-target="post-migrator-key"><?php esc_html_e( 'Copy', 'post-migrator' ); ?></button>
+			</span>
 		</p>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_regenerate_key" />
@@ -144,11 +155,11 @@ class Admin_Page {
 			<?php wp_nonce_field( 'post_migrator_test_connection' ); ?>
 			<p>
 				<label for="post-migrator-target-url"><?php esc_html_e( 'Site URL', 'post-migrator' ); ?></label><br />
-				<input type="text" id="post-migrator-target-url" name="target_url" class="regular-text" />
+				<input type="text" id="post-migrator-target-url" name="target_url" class="regular-text" value="<?php echo esc_attr( Target_Store::get_target_url() ); ?>" />
 			</p>
 			<p>
 				<label for="post-migrator-target-key"><?php esc_html_e( 'Key', 'post-migrator' ); ?></label><br />
-				<input type="text" id="post-migrator-target-key" name="target_key" class="regular-text code" />
+				<input type="text" id="post-migrator-target-key" name="target_key" class="regular-text code" value="<?php echo esc_attr( Target_Store::get_target_key() ); ?>" />
 			</p>
 			<?php submit_button( __( 'Test Connection', 'post-migrator' ) ); ?>
 		</form>
@@ -168,5 +179,12 @@ class Admin_Page {
 
 		wp_enqueue_style( 'post-migrator-admin', POST_MIGRATOR_URL . 'dist/css/admin.css', array(), POST_MIGRATOR_VERSION );
 		wp_enqueue_script( 'post-migrator-admin', POST_MIGRATOR_URL . 'dist/js/admin.js', array(), POST_MIGRATOR_VERSION, true );
+		wp_localize_script(
+			'post-migrator-admin',
+			'postMigratorAdmin',
+			array(
+				'copiedLabel' => __( 'Copied!', 'post-migrator' ),
+			)
+		);
 	}
 }

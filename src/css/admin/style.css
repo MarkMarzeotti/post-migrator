@@ -1,0 +1,9 @@
+.post-migrator-field-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.post-migrator-field-row input[readonly] {
+	background: #f0f0f1;
+}

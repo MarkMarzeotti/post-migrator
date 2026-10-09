@@ -40,6 +40,9 @@
 		"webpack": "^5.88.2",
 		"webpack-cli": "^4.10.0"
 	},
+	"dependencies": {
+		"clipboard": "^2.0.11"
+	},
 	"engines": {
 		"node": ">=22.0.0"
 	}
