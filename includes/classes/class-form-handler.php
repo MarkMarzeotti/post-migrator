@@ -26,6 +26,7 @@ class Form_Handler {
 	protected function __construct() {
 		add_action( 'admin_post_post_migrator_regenerate_key', array( $this, 'handle_regenerate_key' ) );
 		add_action( 'admin_post_post_migrator_test_connection', array( $this, 'handle_test_connection' ) );
+		add_action( 'admin_post_post_migrator_save_permissions', array( $this, 'handle_save_permissions' ) );
 	}
 
 	/**
@@ -56,7 +57,7 @@ class Form_Handler {
 
 		Key_Manager::regenerate_key();
 
-		$this->redirect_with_notice( 'key_regenerated' );
+		$this->redirect_with_notice( 'key_regenerated', Dashboard_Page::PAGE_SLUG );
 	}
 
 	/**
@@ -78,25 +79,46 @@ class Form_Handler {
 		Target_Store::save( $target_url, $target_key );
 
 		if ( '' === $target_url || '' === $target_key || ! Connection_Client::validate_target_url( $target_url ) ) {
-			$this->redirect_with_notice( 'connection_invalid_url' );
+			$this->redirect_with_notice( 'connection_invalid_url', Migrate_Page::PAGE_SLUG );
 		}
 
 		$result = Connection_Client::test_connection( $target_url, $target_key );
 
-		$this->redirect_with_notice( $result['code'] );
+		$this->redirect_with_notice( $result['code'], Migrate_Page::PAGE_SLUG );
 	}
 
 	/**
-	 * Redirect back to the admin page with a notice code.
+	 * Handle the "Save Permissions" form submission.
 	 *
-	 * @param string $notice_code The notice code to display.
 	 * @return void
 	 */
-	private function redirect_with_notice( string $notice_code ) {
+	public function handle_save_permissions() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to do that.', 'post-migrator' ), '', array( 'response' => 403 ) );
+		}
+
+		check_admin_referer( 'post_migrator_save_permissions' );
+
+		$allow_pull = isset( $_POST['allow_pull'] );
+		$allow_push = isset( $_POST['allow_push'] );
+
+		Permissions::save( $allow_pull, $allow_push );
+
+		$this->redirect_with_notice( 'permissions_saved', Dashboard_Page::PAGE_SLUG );
+	}
+
+	/**
+	 * Redirect back to an admin page with a notice code.
+	 *
+	 * @param string $notice_code The notice code to display.
+	 * @param string $page_slug   The page slug to redirect back to.
+	 * @return void
+	 */
+	private function redirect_with_notice( string $notice_code, string $page_slug ) {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'      => 'post-migrator',
+					'page'      => $page_slug,
 					'pm_notice' => $notice_code,
 				),
 				admin_url( 'tools.php' )

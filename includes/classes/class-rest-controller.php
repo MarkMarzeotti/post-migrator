@@ -116,4 +116,58 @@ class REST_Controller {
 
 		return true;
 	}
+
+	/**
+	 * Authenticate an incoming request that pulls content from this site.
+	 *
+	 * Intended as the permission_callback for future routes that let another
+	 * site read content from this site.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return bool|\WP_Error
+	 */
+	public static function authenticate_pull_request( \WP_REST_Request $request ) {
+		$authenticated = self::authenticate_request( $request );
+
+		if ( is_wp_error( $authenticated ) ) {
+			return $authenticated;
+		}
+
+		if ( ! Permissions::pull_allowed() ) {
+			return new \WP_Error(
+				'post_migrator_pull_disabled',
+				__( 'This site does not allow other sites to pull content from it.', 'post-migrator' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Authenticate an incoming request that pushes content to this site.
+	 *
+	 * Intended as the permission_callback for future routes that let another
+	 * site write content to this site.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return bool|\WP_Error
+	 */
+	public static function authenticate_push_request( \WP_REST_Request $request ) {
+		$authenticated = self::authenticate_request( $request );
+
+		if ( is_wp_error( $authenticated ) ) {
+			return $authenticated;
+		}
+
+		if ( ! Permissions::push_allowed() ) {
+			return new \WP_Error(
+				'post_migrator_push_disabled',
+				__( 'This site does not allow other sites to push content to it.', 'post-migrator' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		return true;
+	}
 }

@@ -1,6 +1,6 @@
 <?php
 /**
- * Class Admin Page
+ * Class Dashboard Page
  *
  * @package PostMigrator
  */
@@ -10,9 +10,16 @@ declare( strict_types = 1 );
 namespace PostMigrator;
 
 /**
- * Registers and renders the Post Migrator admin page under Tools.
+ * Registers and renders the Post Migrator dashboard page under Tools.
  */
-class Admin_Page {
+class Dashboard_Page {
+	/**
+	 * This page's slug.
+	 *
+	 * @var string
+	 */
+	public const PAGE_SLUG = 'post-migrator';
+
 	/**
 	 * Instance of self.
 	 *
@@ -43,7 +50,7 @@ class Admin_Page {
 	}
 
 	/**
-	 * Register the Post Migrator admin page under Tools.
+	 * Register the Post Migrator dashboard page under Tools.
 	 *
 	 * @return void
 	 */
@@ -52,13 +59,13 @@ class Admin_Page {
 			__( 'Post Migrator', 'post-migrator' ),
 			__( 'Post Migrator', 'post-migrator' ),
 			'manage_options',
-			'post-migrator',
+			self::PAGE_SLUG,
 			array( $this, 'render_page' )
 		);
 	}
 
 	/**
-	 * Render the Post Migrator admin page.
+	 * Render the Post Migrator dashboard page.
 	 *
 	 * @return void
 	 */
@@ -67,45 +74,11 @@ class Admin_Page {
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 			<?php
-			$this->render_notices();
+			Admin_Nav::render( self::PAGE_SLUG );
+			Admin_Notices::render();
 			$this->render_connection_info_section();
-			$this->render_test_connection_section();
+			$this->render_permissions_section();
 			?>
-		</div>
-		<?php
-	}
-
-	/**
-	 * Render an admin notice based on the current request's notice code, if any.
-	 *
-	 * @return void
-	 */
-	private function render_notices() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only notice display, no state change.
-		$notice_code = isset( $_GET['pm_notice'] ) ? sanitize_key( wp_unslash( $_GET['pm_notice'] ) ) : '';
-
-		if ( '' === $notice_code ) {
-			return;
-		}
-
-		$notices = array(
-			'key_regenerated'                => array( 'success', __( 'Key regenerated.', 'post-migrator' ) ),
-			'connection_ok'                  => array( 'success', __( 'Connection successful.', 'post-migrator' ) ),
-			'connection_unauthorized'        => array( 'error', __( 'The target site rejected the key.', 'post-migrator' ) ),
-			'connection_unreachable'         => array( 'error', __( 'Could not reach the target site.', 'post-migrator' ) ),
-			'connection_invalid_url'         => array( 'error', __( 'Please enter a valid site URL and key.', 'post-migrator' ) ),
-			'connection_unexpected_response' => array( 'error', __( 'The target site returned an unexpected response.', 'post-migrator' ) ),
-		);
-
-		if ( ! isset( $notices[ $notice_code ] ) ) {
-			return;
-		}
-
-		$type    = $notices[ $notice_code ][0];
-		$message = $notices[ $notice_code ][1];
-		?>
-		<div class="notice notice-<?php echo esc_attr( $type ); ?> is-dismissible">
-			<p><?php echo esc_html( $message ); ?></p>
 		</div>
 		<?php
 	}
@@ -142,38 +115,42 @@ class Admin_Page {
 	}
 
 	/**
-	 * Render the form used to test a connection to another site.
+	 * Render the form used to control whether other sites may pull or push content.
 	 *
 	 * @return void
 	 */
-	private function render_test_connection_section() {
+	private function render_permissions_section() {
 		?>
-		<h2><?php esc_html_e( 'Test Connection', 'post-migrator' ); ?></h2>
-		<p><?php esc_html_e( "Enter the other site's URL and key to test a connection.", 'post-migrator' ); ?></p>
+		<h2><?php esc_html_e( 'Permissions', 'post-migrator' ); ?></h2>
+		<p><?php esc_html_e( 'Control whether other sites are allowed to pull content from this site or push content to it. These apply even once a connection has been tested successfully.', 'post-migrator' ); ?></p>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="post_migrator_test_connection" />
-			<?php wp_nonce_field( 'post_migrator_test_connection' ); ?>
+			<input type="hidden" name="action" value="post_migrator_save_permissions" />
+			<?php wp_nonce_field( 'post_migrator_save_permissions' ); ?>
 			<p>
-				<label for="post-migrator-target-url"><?php esc_html_e( 'Site URL', 'post-migrator' ); ?></label><br />
-				<input type="text" id="post-migrator-target-url" name="target_url" class="regular-text" value="<?php echo esc_attr( Target_Store::get_target_url() ); ?>" />
+				<label>
+					<input type="checkbox" name="allow_pull" value="1" <?php checked( Permissions::pull_allowed() ); ?> />
+					<?php esc_html_e( 'Allow other sites to pull content from this site', 'post-migrator' ); ?>
+				</label>
 			</p>
 			<p>
-				<label for="post-migrator-target-key"><?php esc_html_e( 'Key', 'post-migrator' ); ?></label><br />
-				<input type="text" id="post-migrator-target-key" name="target_key" class="regular-text code" value="<?php echo esc_attr( Target_Store::get_target_key() ); ?>" />
+				<label>
+					<input type="checkbox" name="allow_push" value="1" <?php checked( Permissions::push_allowed() ); ?> />
+					<?php esc_html_e( 'Allow other sites to push content to this site', 'post-migrator' ); ?>
+				</label>
 			</p>
-			<?php submit_button( __( 'Test Connection', 'post-migrator' ) ); ?>
+			<?php submit_button( __( 'Save Permissions', 'post-migrator' ), 'secondary' ); ?>
 		</form>
 		<?php
 	}
 
 	/**
-	 * Enqueue the Post Migrator admin page assets.
+	 * Enqueue the dashboard page assets.
 	 *
 	 * @param string $hook_suffix The current admin page hook suffix.
 	 * @return void
 	 */
 	public function enqueue_assets( $hook_suffix ) {
-		if ( 'tools_page_post-migrator' !== $hook_suffix ) {
+		if ( 'tools_page_' . self::PAGE_SLUG !== $hook_suffix ) {
 			return;
 		}
 
