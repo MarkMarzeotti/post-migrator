@@ -29,6 +29,13 @@ class Target_Store {
 	private const KEY_META_KEY = 'post_migrator_target_key';
 
 	/**
+	 * User meta key used to store the fingerprint of the last-verified target URL/key pair.
+	 *
+	 * @var string
+	 */
+	private const VERIFIED_FINGERPRINT_META_KEY = 'post_migrator_target_verified_fingerprint';
+
+	/**
 	 * Get the target site URL last entered by the current user.
 	 *
 	 * @return string
@@ -60,5 +67,45 @@ class Target_Store {
 	public static function save( string $url, string $key ) {
 		update_user_meta( get_current_user_id(), self::URL_META_KEY, $url );
 		update_user_meta( get_current_user_id(), self::KEY_META_KEY, $key );
+	}
+
+	/**
+	 * Mark the currently saved target URL/key as having just passed a connection test.
+	 *
+	 * @return void
+	 */
+	public static function mark_verified() {
+		update_user_meta(
+			get_current_user_id(),
+			self::VERIFIED_FINGERPRINT_META_KEY,
+			self::fingerprint( self::get_target_url(), self::get_target_key() )
+		);
+	}
+
+	/**
+	 * Check whether the currently saved target URL/key is the one that last passed a
+	 * connection test. Self-invalidates whenever `save()` stores a different URL/key.
+	 *
+	 * @return bool
+	 */
+	public static function is_verified(): bool {
+		$stored = get_user_meta( get_current_user_id(), self::VERIFIED_FINGERPRINT_META_KEY, true );
+
+		if ( ! is_string( $stored ) || '' === $stored ) {
+			return false;
+		}
+
+		return hash_equals( $stored, self::fingerprint( self::get_target_url(), self::get_target_key() ) );
+	}
+
+	/**
+	 * Build a fingerprint identifying a target URL/key pair.
+	 *
+	 * @param string $url The target site URL.
+	 * @param string $key The target site key.
+	 * @return string
+	 */
+	private static function fingerprint( string $url, string $key ): string {
+		return hash( 'sha256', $url . '|' . $key );
 	}
 }

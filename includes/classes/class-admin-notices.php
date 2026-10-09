@@ -55,6 +55,14 @@ class Admin_Notices {
 			'connection_unreachable'         => array( 'error', __( 'Could not reach the target site.', 'post-migrator' ) ),
 			'connection_invalid_url'         => array( 'error', __( 'Please enter a valid site URL and key.', 'post-migrator' ) ),
 			'connection_unexpected_response' => array( 'error', __( 'The target site returned an unexpected response.', 'post-migrator' ) ),
+			'push_settings_saved'            => array( 'success', __( 'Push settings saved.', 'post-migrator' ) ),
+			'push_connection_not_verified'   => array( 'error', __( 'Test the connection successfully before pushing content.', 'post-migrator' ) ),
+			'push_no_posts_selected'         => array( 'error', __( 'Select at least one item to push.', 'post-migrator' ) ),
+			'push_match_check_failed'        => array( 'error', __( 'Could not check for matching content on the other site.', 'post-migrator' ) ),
+			'push_search_failed'             => array( 'error', __( 'The search on the other site failed.', 'post-migrator' ) ),
+			'push_batch_expired'             => array( 'error', __( 'This push session expired. Please select content to push again.', 'post-migrator' ) ),
+			'push_complete'                  => array( 'success', __( 'Push complete.', 'post-migrator' ) ),
+			'push_complete_with_errors'      => array( 'warning', __( 'Push complete, but some items had errors.', 'post-migrator' ) ),
 		);
 	}
 }

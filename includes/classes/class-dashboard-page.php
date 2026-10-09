@@ -78,6 +78,7 @@ class Dashboard_Page {
 			Admin_Notices::render();
 			$this->render_connection_info_section();
 			$this->render_permissions_section();
+			$this->render_push_settings_section();
 			?>
 		</div>
 		<?php
@@ -139,6 +140,35 @@ class Dashboard_Page {
 				</label>
 			</p>
 			<?php submit_button( __( 'Save Permissions', 'post-migrator' ), 'secondary' ); ?>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Render the form used to set the default author for content pushed to this site.
+	 *
+	 * @return void
+	 */
+	private function render_push_settings_section() {
+		?>
+		<h2><?php esc_html_e( 'Push Settings', 'post-migrator' ); ?></h2>
+		<p><?php esc_html_e( "Choose the author assigned to new posts created here by a push, when the pushed post's author doesn't have a matching account on this site.", 'post-migrator' ); ?></p>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="post_migrator_save_push_settings" />
+			<?php wp_nonce_field( 'post_migrator_save_push_settings' ); ?>
+			<p>
+				<label for="post-migrator-default-author"><?php esc_html_e( 'Default Author', 'post-migrator' ); ?></label><br />
+				<?php
+				wp_dropdown_users(
+					array(
+						'name'     => 'default_author',
+						'id'       => 'post-migrator-default-author',
+						'selected' => Push_Settings::get_default_author(),
+					)
+				);
+				?>
+			</p>
+			<?php submit_button( __( 'Save Push Settings', 'post-migrator' ), 'secondary' ); ?>
 		</form>
 		<?php
 	}

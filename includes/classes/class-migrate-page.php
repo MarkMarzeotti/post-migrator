@@ -78,6 +78,7 @@ class Migrate_Page {
 			Admin_Nav::render( self::PAGE_SLUG );
 			Admin_Notices::render();
 			$this->render_test_connection_section();
+			$this->render_push_pull_entry_section();
 			?>
 		</div>
 		<?php
@@ -105,6 +106,25 @@ class Migrate_Page {
 			</p>
 			<?php submit_button( __( 'Test Connection', 'post-migrator' ) ); ?>
 		</form>
+		<?php
+	}
+
+	/**
+	 * Render the Push/Pull entry points, shown only once the currently saved
+	 * target has passed a connection test.
+	 *
+	 * @return void
+	 */
+	private function render_push_pull_entry_section() {
+		if ( ! Target_Store::is_verified() ) {
+			return;
+		}
+		?>
+		<h2><?php esc_html_e( 'Migrate Content', 'post-migrator' ); ?></h2>
+		<p>
+			<a class="button button-primary" href="<?php echo esc_url( admin_url( 'tools.php?page=' . Push_Page::PAGE_SLUG ) ); ?>"><?php esc_html_e( 'Push Content', 'post-migrator' ); ?></a>
+			<button type="button" class="button" disabled="disabled"><?php esc_html_e( 'Pull Content (coming soon)', 'post-migrator' ); ?></button>
+		</p>
 		<?php
 	}
 }

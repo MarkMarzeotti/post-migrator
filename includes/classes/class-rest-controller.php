@@ -70,6 +70,36 @@ class REST_Controller {
 				'permission_callback' => array( self::class, 'authenticate_request' ),
 			)
 		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/push/match',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_push_match' ),
+				'permission_callback' => array( self::class, 'authenticate_push_request' ),
+			)
+		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/push/search',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_push_search' ),
+				'permission_callback' => array( self::class, 'authenticate_push_request' ),
+			)
+		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/push/apply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_push_apply' ),
+				'permission_callback' => array( self::class, 'authenticate_push_request' ),
+			)
+		);
 	}
 
 	/**
@@ -85,6 +115,109 @@ class REST_Controller {
 				'version'  => POST_MIGRATOR_VERSION,
 				'time'     => time(),
 			),
+			200
+		);
+	}
+
+	/**
+	 * Handle the batch match-check route, used by a pushing site to find out
+	 * which of its selected posts already exist on this site.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_push_match( \WP_REST_Request $request ) {
+		$params      = $request->get_json_params();
+		$origin_site = isset( $params['origin_site'] ) ? (string) $params['origin_site'] : '';
+		$items       = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : array();
+
+		if ( '' === $origin_site || empty( $items ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'origin_site and items are required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( count( $items ) > 100 ) {
+			return new \WP_Error(
+				'post_migrator_too_many_items',
+				__( 'No more than 100 items may be matched at once.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$sanitized = array();
+
+		foreach ( $items as $item ) {
+			if ( ! isset( $item['origin_id'], $item['post_type'] ) ) {
+				continue;
+			}
+
+			$sanitized[] = array(
+				'origin_id' => (int) $item['origin_id'],
+				'post_type' => sanitize_key( $item['post_type'] ),
+				'slug'      => isset( $item['slug'] ) ? sanitize_title( (string) $item['slug'] ) : '',
+				'title'     => isset( $item['title'] ) ? sanitize_text_field( (string) $item['title'] ) : '',
+			);
+		}
+
+		// Cast to object so an empty or coincidentally sequential-from-zero
+		// set of origin IDs still encodes as a JSON object, not an array.
+		return new \WP_REST_Response(
+			array( 'matches' => (object) Content_Matcher::match_batch( $origin_site, $sanitized ) ),
+			200
+		);
+	}
+
+	/**
+	 * Handle the manual-override search route, used by a pushing site to let
+	 * the user pick a specific post on this site to overwrite.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_push_search( \WP_REST_Request $request ) {
+		$params    = $request->get_json_params();
+		$post_type = isset( $params['post_type'] ) ? sanitize_key( $params['post_type'] ) : '';
+		$search    = isset( $params['search'] ) ? sanitize_text_field( (string) $params['search'] ) : '';
+		$per_page  = isset( $params['per_page'] ) ? (int) $params['per_page'] : 20;
+
+		if ( '' === $post_type || ! post_type_exists( $post_type ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'A valid post_type is required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		return new \WP_REST_Response(
+			array( 'results' => Content_Matcher::search( $post_type, $search, $per_page ) ),
+			200
+		);
+	}
+
+	/**
+	 * Handle the create/overwrite route, used by a pushing site to write content to this site.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_push_apply( \WP_REST_Request $request ) {
+		$params      = $request->get_json_params();
+		$origin_site = isset( $params['origin_site'] ) ? (string) $params['origin_site'] : '';
+		$items       = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : array();
+
+		if ( '' === $origin_site || empty( $items ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'origin_site and items are required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		return new \WP_REST_Response(
+			array( 'results' => Post_Writer::apply_batch( $origin_site, $items ) ),
 			200
 		);
 	}
