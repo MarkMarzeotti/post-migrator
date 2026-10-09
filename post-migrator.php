@@ -50,3 +50,5 @@ spl_autoload_register(
 );
 
 add_action( 'plugins_loaded', array( '\PostMigrator\Admin_Page', 'get_instance' ) );
+add_action( 'plugins_loaded', array( '\PostMigrator\REST_Controller', 'get_instance' ) );
+add_action( 'plugins_loaded', array( '\PostMigrator\Form_Handler', 'get_instance' ) );
