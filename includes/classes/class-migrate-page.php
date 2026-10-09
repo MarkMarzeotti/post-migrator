@@ -49,7 +49,7 @@ class Migrate_Page {
 	}
 
 	/**
-	 * Register the Migrate page under Tools.
+	 * Register the Migrate page under Tools, without a visible menu item.
 	 *
 	 * @return void
 	 */
@@ -61,6 +61,8 @@ class Migrate_Page {
 			self::PAGE_SLUG,
 			array( $this, 'render_page' )
 		);
+
+		remove_submenu_page( 'tools.php', self::PAGE_SLUG );
 	}
 
 	/**

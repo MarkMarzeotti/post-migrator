@@ -21,7 +21,7 @@ class Admin_Nav {
 	 */
 	public static function render( string $current_slug ) {
 		$tabs = array(
-			Dashboard_Page::PAGE_SLUG => __( 'Post Migrator', 'post-migrator' ),
+			Dashboard_Page::PAGE_SLUG => __( 'Dashboard', 'post-migrator' ),
 			Migrate_Page::PAGE_SLUG   => __( 'Migrate', 'post-migrator' ),
 		);
 		?>
