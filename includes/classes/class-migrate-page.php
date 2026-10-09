@@ -123,7 +123,7 @@ class Migrate_Page {
 		<h2><?php esc_html_e( 'Migrate Content', 'post-migrator' ); ?></h2>
 		<p>
 			<a class="button button-primary" href="<?php echo esc_url( admin_url( 'tools.php?page=' . Push_Page::PAGE_SLUG ) ); ?>"><?php esc_html_e( 'Push Content', 'post-migrator' ); ?></a>
-			<button type="button" class="button" disabled="disabled"><?php esc_html_e( 'Pull Content (coming soon)', 'post-migrator' ); ?></button>
+			<a class="button button-primary" href="<?php echo esc_url( admin_url( 'tools.php?page=' . Pull_Page::PAGE_SLUG ) ); ?>"><?php esc_html_e( 'Pull Content', 'post-migrator' ); ?></a>
 		</p>
 		<?php
 	}

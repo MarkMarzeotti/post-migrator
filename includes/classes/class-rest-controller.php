@@ -100,6 +100,26 @@ class REST_Controller {
 				'permission_callback' => array( self::class, 'authenticate_push_request' ),
 			)
 		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/pull/list',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_pull_list' ),
+				'permission_callback' => array( self::class, 'authenticate_pull_request' ),
+			)
+		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/pull/fetch',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_pull_fetch' ),
+				'permission_callback' => array( self::class, 'authenticate_pull_request' ),
+			)
+		);
 	}
 
 	/**
@@ -223,6 +243,94 @@ class REST_Controller {
 	}
 
 	/**
+	 * Handle the content-browsing route, used by a pulling site to list this
+	 * site's own content for its selection step.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_pull_list( \WP_REST_Request $request ) {
+		$params    = $request->get_json_params();
+		$post_type = isset( $params['post_type'] ) ? sanitize_key( $params['post_type'] ) : '';
+		$status    = isset( $params['status'] ) ? sanitize_key( $params['status'] ) : '';
+		$search    = isset( $params['search'] ) ? sanitize_text_field( (string) $params['search'] ) : '';
+
+		if ( '' === $post_type || ! post_type_exists( $post_type ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'A valid post_type is required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$query   = Content_Browser::query_posts( $post_type, $status, $search );
+		$results = array();
+
+		foreach ( $query->posts as $post ) {
+			$results[] = array(
+				'id'        => $post->ID,
+				'post_type' => $post->post_type,
+				'title'     => get_the_title( $post ),
+				'slug'      => $post->post_name,
+				'status'    => $post->post_status,
+				'modified'  => get_the_modified_date( '', $post ),
+			);
+		}
+
+		return new \WP_REST_Response( array( 'results' => $results ), 200 );
+	}
+
+	/**
+	 * Handle the content-fetching route, used by a pulling site to read the
+	 * full, current content of selected posts on this site.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_pull_fetch( \WP_REST_Request $request ) {
+		$params   = $request->get_json_params();
+		$post_ids = isset( $params['post_ids'] ) && is_array( $params['post_ids'] ) ? array_map( 'absint', $params['post_ids'] ) : array();
+		$post_ids = array_values( array_filter( $post_ids ) );
+
+		if ( empty( $post_ids ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'post_ids is required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( count( $post_ids ) > 100 ) {
+			return new \WP_Error(
+				'post_migrator_too_many_items',
+				__( 'No more than 100 items may be fetched at once.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$items = array();
+
+		foreach ( $post_ids as $post_id ) {
+			$post = get_post( $post_id );
+
+			if ( ! $post ) {
+				continue;
+			}
+
+			$items[ $post_id ] = array(
+				'post_type' => $post->post_type,
+				'title'     => get_the_title( $post ),
+				'slug'      => $post->post_name,
+				'post'      => Post_Packager::package( $post ),
+			);
+		}
+
+		// Cast to object so an empty or coincidentally sequential-from-zero
+		// set of post IDs still encodes as a JSON object, not an array.
+		return new \WP_REST_Response( array( 'items' => (object) $items ), 200 );
+	}
+
+	/**
 	 * Authenticate an incoming request using the shared connection key.
 	 *
 	 * @param \WP_REST_Request $request The REST request.
@@ -253,8 +361,8 @@ class REST_Controller {
 	/**
 	 * Authenticate an incoming request that pulls content from this site.
 	 *
-	 * Intended as the permission_callback for future routes that let another
-	 * site read content from this site.
+	 * Used as the permission_callback for the routes that let another site
+	 * read content from this site.
 	 *
 	 * @param \WP_REST_Request $request The REST request.
 	 * @return bool|\WP_Error

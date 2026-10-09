@@ -1,6 +1,6 @@
 <?php
 /**
- * Class Push Page
+ * Class Pull Page
  *
  * @package PostMigrator
  */
@@ -10,15 +10,15 @@ declare( strict_types = 1 );
 namespace PostMigrator;
 
 /**
- * Registers and renders the Post Migrator "Push" page under Tools.
+ * Registers and renders the Post Migrator "Pull" page under Tools.
  */
-class Push_Page extends Migration_Page {
+class Pull_Page extends Migration_Page {
 	/**
 	 * This page's slug.
 	 *
 	 * @var string
 	 */
-	public const PAGE_SLUG = 'post-migrator-push';
+	public const PAGE_SLUG = 'post-migrator-pull';
 
 	/**
 	 * Instance of self.
@@ -28,7 +28,7 @@ class Push_Page extends Migration_Page {
 	protected static $instance;
 
 	/**
-	 * Render the step where the user selects local content to push.
+	 * Render the step where the user selects content on the source site to pull.
 	 *
 	 * @return void
 	 */
@@ -37,21 +37,21 @@ class Push_Page extends Migration_Page {
 		$status    = $this->get_selected_status();
 		$search    = $this->get_search_term();
 		?>
-		<h2><?php esc_html_e( 'Select Content to Push', 'post-migrator' ); ?></h2>
+		<h2><?php esc_html_e( 'Select Content to Pull', 'post-migrator' ); ?></h2>
 		<?php $this->render_target_banner(); ?>
 		<form method="get" action="<?php echo esc_url( admin_url( 'tools.php' ) ); ?>">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
 			<p>
-				<label for="post-migrator-push-post-type"><?php esc_html_e( 'Post Type', 'post-migrator' ); ?></label><br />
-				<select id="post-migrator-push-post-type" name="pm_post_type">
+				<label for="post-migrator-pull-post-type"><?php esc_html_e( 'Post Type', 'post-migrator' ); ?></label><br />
+				<select id="post-migrator-pull-post-type" name="pm_post_type">
 					<?php foreach ( Content_Browser::get_browsable_post_types() as $slug => $label ) : ?>
 						<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $post_type, $slug ); ?>><?php echo esc_html( $label ); ?></option>
 					<?php endforeach; ?>
 				</select>
 			</p>
 			<p>
-				<label for="post-migrator-push-status"><?php esc_html_e( 'Status', 'post-migrator' ); ?></label><br />
-				<select id="post-migrator-push-status" name="status">
+				<label for="post-migrator-pull-status"><?php esc_html_e( 'Status', 'post-migrator' ); ?></label><br />
+				<select id="post-migrator-pull-status" name="status">
 					<option value="" <?php selected( $status, '' ); ?>><?php esc_html_e( 'Any', 'post-migrator' ); ?></option>
 					<?php foreach ( get_post_statuses() as $slug => $label ) : ?>
 						<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $status, $slug ); ?>><?php echo esc_html( $label ); ?></option>
@@ -59,15 +59,28 @@ class Push_Page extends Migration_Page {
 				</select>
 			</p>
 			<p>
-				<label for="post-migrator-push-search"><?php esc_html_e( 'Search', 'post-migrator' ); ?></label><br />
-				<input type="search" id="post-migrator-push-search" name="s" class="regular-text" value="<?php echo esc_attr( $search ); ?>" />
+				<label for="post-migrator-pull-search"><?php esc_html_e( 'Search', 'post-migrator' ); ?></label><br />
+				<input type="search" id="post-migrator-pull-search" name="s" class="regular-text" value="<?php echo esc_attr( $search ); ?>" />
 			</p>
 			<?php submit_button( __( 'Filter', 'post-migrator' ), 'secondary' ); ?>
 		</form>
 		<?php
-		$query = Content_Browser::query_posts( $post_type, $status, $search );
+		$list_result = Connection_Client::list_source_content(
+			Target_Store::get_target_url(),
+			Target_Store::get_target_key(),
+			$post_type,
+			$status,
+			$search
+		);
 
-		if ( empty( $query->posts ) ) {
+		if ( ! $list_result['success'] ) {
+			$this->render_connection_error( $list_result );
+			return;
+		}
+
+		$results = $list_result['results'] ?? array();
+
+		if ( empty( $results ) ) {
 			?>
 			<p><?php esc_html_e( 'No content matches this filter.', 'post-migrator' ); ?></p>
 			<?php
@@ -75,8 +88,8 @@ class Push_Page extends Migration_Page {
 		}
 		?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="post_migrator_push_select" />
-			<?php wp_nonce_field( 'post_migrator_push_select' ); ?>
+			<input type="hidden" name="action" value="post_migrator_pull_select" />
+			<?php wp_nonce_field( 'post_migrator_pull_select' ); ?>
 			<table class="widefat striped">
 				<thead>
 					<tr>
@@ -87,18 +100,37 @@ class Push_Page extends Migration_Page {
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ( $query->posts as $post ) : ?>
+					<?php foreach ( $results as $result ) : ?>
 						<tr>
-							<td><input type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $post->ID ); ?>" /></td>
-							<td><?php echo esc_html( get_the_title( $post ) ); ?></td>
-							<td><?php echo esc_html( $post->post_status ); ?></td>
-							<td><?php echo esc_html( get_the_modified_date( '', $post ) ); ?></td>
+							<td><input type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $result['id'] ); ?>" /></td>
+							<td><?php echo esc_html( $result['title'] ); ?></td>
+							<td><?php echo esc_html( $result['status'] ); ?></td>
+							<td><?php echo esc_html( $result['modified'] ); ?></td>
 						</tr>
 					<?php endforeach; ?>
 				</tbody>
 			</table>
 			<?php submit_button( __( 'Continue', 'post-migrator' ) ); ?>
 		</form>
+		<?php
+	}
+
+	/**
+	 * Render an inline error when browsing the source site's content fails.
+	 *
+	 * @param array $result A Connection_Client result array with 'success' => false.
+	 * @return void
+	 */
+	private function render_connection_error( array $result ) {
+		?>
+		<div class="notice notice-error inline">
+			<p>
+				<?php esc_html_e( 'Could not retrieve content from the source site.', 'post-migrator' ); ?>
+				<?php if ( ! empty( $result['message'] ) ) : ?>
+					<?php echo esc_html( $result['message'] ); ?>
+				<?php endif; ?>
+			</p>
+		</div>
 		<?php
 	}
 
@@ -117,7 +149,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function page_title(): string {
-		return __( 'Push Content', 'post-migrator' );
+		return __( 'Pull Content', 'post-migrator' );
 	}
 
 	/**
@@ -126,7 +158,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function batch_transient_prefix(): string {
-		return 'push_batch';
+		return 'pull_batch';
 	}
 
 	/**
@@ -135,7 +167,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function result_transient_prefix(): string {
-		return 'push_result';
+		return 'pull_result';
 	}
 
 	/**
@@ -144,7 +176,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function confirm_action(): string {
-		return 'post_migrator_push_confirm';
+		return 'post_migrator_pull_confirm';
 	}
 
 	/**
@@ -153,7 +185,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function manual_search_action(): string {
-		return 'post_migrator_push_manual_search';
+		return 'post_migrator_pull_manual_search';
 	}
 
 	/**
@@ -162,7 +194,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function cancel_action(): string {
-		return 'post_migrator_push_cancel';
+		return 'post_migrator_pull_cancel';
 	}
 
 	/**
@@ -171,7 +203,7 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function confirm_button_label(): string {
-		return __( 'Push Selected Content', 'post-migrator' );
+		return __( 'Pull Selected Content', 'post-migrator' );
 	}
 
 	/**
@@ -180,8 +212,8 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function review_intro_format(): string {
-		/* translators: 1: number of items, 2: the target site's URL */
-		return esc_html__( 'You are about to push %1$d item(s) to %2$s.', 'post-migrator' );
+		/* translators: 1: number of items, 2: the source site's URL */
+		return esc_html__( 'You are about to pull %1$d item(s) from %2$s.', 'post-migrator' );
 	}
 
 	/**
@@ -191,7 +223,7 @@ class Push_Page extends Migration_Page {
 	 */
 	protected function origin_match_format(): string {
 		/* translators: 1: matched post title, 2: matched post status */
-		return esc_html__( 'Overwrite previously-pushed post "%1$s" (%2$s)', 'post-migrator' );
+		return esc_html__( 'Overwrite previously-pulled post "%1$s" (%2$s)', 'post-migrator' );
 	}
 
 	/**
@@ -200,20 +232,15 @@ class Push_Page extends Migration_Page {
 	 * @return string
 	 */
 	protected function site_banner_format(): string {
-		/* translators: %s: the target site's URL */
-		return esc_html__( 'Target site: %s', 'post-migrator' );
+		/* translators: %s: the source site's URL */
+		return esc_html__( 'Source site: %s', 'post-migrator' );
 	}
 
 	/**
 	 * Get the currently selected post type filter, defaulting to the first available.
 	 *
-	 * Read from "pm_post_type" rather than the reserved "post_type" query var:
-	 * WordPress's own admin bootstrap treats a top-level $_GET['post_type'] as
-	 * global state (populating $typenow) on every admin page load, not just
-	 * post-type list screens, which breaks this hidden Tools page's menu
-	 * parent resolution and causes a "Sorry, you are not allowed to access
-	 * this page" 403 once this page's own submenu entry has been removed via
-	 * remove_submenu_page().
+	 * See the identical note in Push_Page -- read from "pm_post_type" rather
+	 * than the reserved "post_type" query var for the same reason.
 	 *
 	 * @return string
 	 */

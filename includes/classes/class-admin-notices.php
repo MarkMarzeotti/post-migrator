@@ -78,6 +78,16 @@ class Admin_Notices {
 			'push_batch_expired'               => array( 'error', __( 'This push session expired. Please select content to push again.', 'post-migrator' ) ),
 			'push_complete'                    => array( 'success', __( 'Push complete.', 'post-migrator' ) ),
 			'push_complete_with_errors'        => array( 'warning', __( 'Push complete, but some items had errors.', 'post-migrator' ) ),
+			'pull_connection_not_verified'     => array( 'error', __( 'Test the connection successfully before pulling content.', 'post-migrator' ) ),
+			'pull_no_posts_selected'           => array( 'error', __( 'Select at least one item to pull.', 'post-migrator' ) ),
+			'pull_connection_invalid_key'      => array( 'error', __( 'The other site rejected the key for this request.', 'post-migrator' ) ),
+			'pull_connection_forbidden'        => array( 'error', __( 'The other site is not configured to accept this kind of connection.', 'post-migrator' ) ),
+			'pull_connection_version_mismatch' => array( 'error', __( "The other site's Post Migrator plugin does not recognize this request -- it may be a different version.", 'post-migrator' ) ),
+			'pull_connection_unreachable'      => array( 'error', __( 'Could not reach the other site.', 'post-migrator' ) ),
+			'pull_connection_unexpected'       => array( 'error', __( 'The other site returned an unexpected response.', 'post-migrator' ) ),
+			'pull_batch_expired'               => array( 'error', __( 'This pull session expired. Please select content to pull again.', 'post-migrator' ) ),
+			'pull_complete'                    => array( 'success', __( 'Pull complete.', 'post-migrator' ) ),
+			'pull_complete_with_errors'        => array( 'warning', __( 'Pull complete, but some items had errors.', 'post-migrator' ) ),
 		);
 	}
 }

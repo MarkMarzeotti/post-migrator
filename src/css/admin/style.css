@@ -7,3 +7,17 @@
 .post-migrator-field-row input[readonly] {
 	background: #f0f0f1;
 }
+
+.post-migrator-review-row {
+	margin-bottom: 16px;
+	padding: 12px;
+}
+
+.post-migrator-equal-options label {
+	display: inline-block;
+	margin-right: 12px;
+}
+
+.post-migrator-error {
+	color: #b32d2e;
+}

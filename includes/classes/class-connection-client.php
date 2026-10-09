@@ -145,6 +145,48 @@ class Connection_Client {
 	}
 
 	/**
+	 * Browse the source site's own content, for a pull selection step.
+	 *
+	 * @param string $target_url The source site's URL.
+	 * @param string $target_key The key to present to the source site.
+	 * @param string $post_type  The post type to list.
+	 * @param string $status     The status to filter by, or '' for any.
+	 * @param string $search     The search term, or '' for none.
+	 * @return array
+	 */
+	public static function list_source_content( string $target_url, string $target_key, string $post_type, string $status, string $search ): array {
+		return self::post_json(
+			$target_url,
+			$target_key,
+			'/pull/list',
+			array(
+				'post_type' => $post_type,
+				'status'    => $status,
+				'search'    => $search,
+			)
+		);
+	}
+
+	/**
+	 * Fetch the full, current content of a batch of posts from the source site.
+	 *
+	 * @param string $target_url The source site's URL.
+	 * @param string $target_key The key to present to the source site.
+	 * @param array  $post_ids   The source site's post IDs to fetch.
+	 * @return array
+	 */
+	public static function fetch_source_posts( string $target_url, string $target_key, array $post_ids ): array {
+		return self::post_json(
+			$target_url,
+			$target_key,
+			'/pull/fetch',
+			array(
+				'post_ids' => $post_ids,
+			)
+		);
+	}
+
+	/**
 	 * POST a JSON body to a Post Migrator route on the target site, authenticated with its key.
 	 *
 	 * @param string $target_url The target site's URL.
