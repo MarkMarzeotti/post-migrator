@@ -236,6 +236,8 @@ class REST_Controller {
 			);
 		}
 
+		self::raise_time_limit();
+
 		return new \WP_REST_Response(
 			array( 'results' => Post_Writer::apply_batch( $origin_site, $items ) ),
 			200
@@ -308,6 +310,8 @@ class REST_Controller {
 			);
 		}
 
+		self::raise_time_limit();
+
 		$items = array();
 
 		foreach ( $post_ids as $post_id ) {
@@ -328,6 +332,21 @@ class REST_Controller {
 		// Cast to object so an empty or coincidentally sequential-from-zero
 		// set of post IDs still encodes as a JSON object, not an array.
 		return new \WP_REST_Response( array( 'items' => (object) $items ), 200 );
+	}
+
+	/**
+	 * Raise the PHP execution time limit for routes that may now sideload
+	 * attachments or walk a batch's content for referenced attachments,
+	 * on hosts where the default (often 30s) would otherwise cut the
+	 * request short. Best-effort only -- some hosts disable set_time_limit().
+	 *
+	 * @return void
+	 */
+	private static function raise_time_limit() {
+		if ( function_exists( 'set_time_limit' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- set_time_limit() can be disabled by the host; failure here is expected and fine to ignore.
+			@set_time_limit( 90 );
+		}
 	}
 
 	/**

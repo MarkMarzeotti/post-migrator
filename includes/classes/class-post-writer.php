@@ -23,6 +23,8 @@ class Post_Writer {
 	 * @return array Per-item outcomes.
 	 */
 	public static function apply_batch( string $origin_site, array $items ): array {
+		Reference_Resolver::reset_cache();
+
 		$results = array();
 
 		foreach ( $items as $item ) {
@@ -109,12 +111,76 @@ class Post_Writer {
 
 		Post_Origin::tag( (int) $result, $origin_id, $origin_site );
 
+		self::import_attachments( is_array( $post['attachments'] ?? null ) ? $post['attachments'] : array(), $origin_site );
+		self::write_meta( (int) $result, is_array( $post['meta'] ?? null ) ? $post['meta'] : array() );
+		Reference_Resolver::resolve_for_post( (int) $result, $origin_site );
+
 		return array(
 			'origin_id'      => $origin_id,
 			'destination_id' => (int) $result,
 			'action_taken'   => 'update' === $action ? 'updated' : 'created',
 			'error'          => null,
 		);
+	}
+
+	/**
+	 * Import a post's bundled attachments, priming Reference_Resolver's
+	 * per-batch cache with each successful result so the resolution pass
+	 * doesn't need to look them up again.
+	 *
+	 * A failure to import one attachment does not abort the item -- the
+	 * reference(s) pointing at it are simply left unresolved.
+	 *
+	 * @param array  $attachments Packaged attachment payloads, keyed by source attachment ID.
+	 * @param string $origin_site The origin site's URL.
+	 * @return void
+	 */
+	private static function import_attachments( array $attachments, string $origin_site ) {
+		foreach ( $attachments as $payload ) {
+			if ( ! is_array( $payload ) ) {
+				continue;
+			}
+
+			$source_id = isset( $payload['source_id'] ) ? (int) $payload['source_id'] : 0;
+
+			if ( $source_id <= 0 ) {
+				continue;
+			}
+
+			$destination_id = Attachment_Writer::import( $payload, $origin_site );
+
+			if ( is_wp_error( $destination_id ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- No results-UI channel exists yet to surface per-attachment import failures.
+				error_log( sprintf( '[Post Migrator] Failed to import attachment %1$d from %2$s: %3$s', $source_id, $origin_site, $destination_id->get_error_message() ) );
+
+				continue;
+			}
+
+			Reference_Resolver::remember_attachment(
+				$source_id,
+				$destination_id,
+				isset( $payload['source_url'] ) ? (string) $payload['source_url'] : ''
+			);
+		}
+	}
+
+	/**
+	 * Write a post's meta wholesale, as packaged by Post_Packager::package_meta().
+	 *
+	 * @param int   $post_id The destination post ID.
+	 * @param array $meta    Meta key/value pairs to write.
+	 * @return void
+	 */
+	private static function write_meta( int $post_id, array $meta ) {
+		kses_remove_filters();
+
+		try {
+			foreach ( $meta as $meta_key => $meta_value ) {
+				update_post_meta( $post_id, (string) $meta_key, $meta_value );
+			}
+		} finally {
+			kses_init_filters();
+		}
 	}
 
 	/**

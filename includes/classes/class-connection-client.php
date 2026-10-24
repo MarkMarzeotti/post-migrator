@@ -14,6 +14,16 @@ namespace PostMigrator;
  */
 class Connection_Client {
 	/**
+	 * Timeout, in seconds, for requests that may sideload attachments or
+	 * walk a batch's content for referenced attachments (/push/apply,
+	 * /pull/fetch) -- longer than the default, since those are no longer
+	 * lightweight calls.
+	 *
+	 * @var int
+	 */
+	private const APPLY_TIMEOUT = 90;
+
+	/**
 	 * Validate that a target URL has an acceptable scheme.
 	 *
 	 * @param string $url The target site URL.
@@ -140,7 +150,11 @@ class Connection_Client {
 			array(
 				'origin_site' => $origin_site,
 				'items'       => $items,
-			)
+			),
+			// Applying a batch can now sideload referenced attachments
+			// synchronously on the target, which takes meaningfully longer
+			// than the lightweight match/search/list calls.
+			self::APPLY_TIMEOUT
 		);
 	}
 
@@ -182,7 +196,11 @@ class Connection_Client {
 			'/pull/fetch',
 			array(
 				'post_ids' => $post_ids,
-			)
+			),
+			// Packaging a batch now walks each post's meta/blocks for
+			// referenced attachments, which takes longer than the
+			// lightweight match/search/list calls.
+			self::APPLY_TIMEOUT
 		);
 	}
 
@@ -193,9 +211,10 @@ class Connection_Client {
 	 * @param string $target_key The key to present to the target site.
 	 * @param string $route      The route to call, relative to the Post Migrator namespace (e.g. "/push/match").
 	 * @param array  $body       The request body.
+	 * @param int    $timeout    The request timeout, in seconds.
 	 * @return array
 	 */
-	private static function post_json( string $target_url, string $target_key, string $route, array $body ): array {
+	private static function post_json( string $target_url, string $target_key, string $route, array $body, int $timeout = 30 ): array {
 		$endpoint = add_query_arg(
 			'rest_route',
 			'/' . REST_Controller::API_NAMESPACE . $route,
@@ -210,7 +229,7 @@ class Connection_Client {
 					REST_Controller::KEY_HEADER => $target_key,
 				),
 				'body'      => wp_json_encode( $body ),
-				'timeout'   => 30,
+				'timeout'   => $timeout,
 				'sslverify' => true,
 			)
 		);
