@@ -24,6 +24,7 @@ class Post_Writer {
 	 */
 	public static function apply_batch( string $origin_site, array $items ): array {
 		Reference_Resolver::reset_cache();
+		Post_Terms_Writer::reset_cache();
 
 		$results = array();
 
@@ -113,6 +114,7 @@ class Post_Writer {
 
 		self::import_attachments( is_array( $post['attachments'] ?? null ) ? $post['attachments'] : array(), $origin_site );
 		self::write_meta( (int) $result, is_array( $post['meta'] ?? null ) ? $post['meta'] : array() );
+		Post_Terms_Writer::write( (int) $result, is_array( $post['terms'] ?? null ) ? $post['terms'] : array(), $origin_site );
 		Reference_Resolver::resolve_for_post( (int) $result, $origin_site );
 
 		return array(

@@ -46,6 +46,14 @@ class Reference_Resolver {
 	private static $attachment_source_urls = array();
 
 	/**
+	 * Per-batch cache of "<taxonomy>:<source_term_id>" to destination term
+	 * ID. A value of 0 means the term was looked up and could not be resolved.
+	 *
+	 * @var array<string, int>
+	 */
+	private static $term_reference_cache = array();
+
+	/**
 	 * Clear the per-batch reference resolution caches.
 	 *
 	 * @return void
@@ -53,6 +61,7 @@ class Reference_Resolver {
 	public static function reset_cache() {
 		self::$attachment_cache       = array();
 		self::$attachment_source_urls = array();
+		self::$term_reference_cache   = array();
 	}
 
 	/**
@@ -103,7 +112,12 @@ class Reference_Resolver {
 			$ids[] = $thumbnail_id;
 		}
 
-		foreach ( get_post_meta( $post->ID ) as $meta_key => $meta_values ) {
+		// get_post_meta( $post_id ) with no key returns every row's value as
+		// a raw, un-unserialized string -- only enumerate keys from it, and
+		// re-fetch each value in single-value form, which is what actually
+		// unserializes array-valued fields like gallery/multi-select instead
+		// of leaving them as text extract_attachment_ids() can't read.
+		foreach ( array_keys( get_post_meta( $post->ID ) ) as $meta_key ) {
 			if ( 0 === strpos( (string) $meta_key, '_' ) ) {
 				continue;
 			}
@@ -114,7 +128,9 @@ class Reference_Resolver {
 				continue;
 			}
 
-			array_push( $ids, ...self::extract_attachment_ids( $field_type, $meta_values[0] ) );
+			$value = get_post_meta( $post->ID, (string) $meta_key, true );
+
+			array_push( $ids, ...self::extract_attachment_ids( $field_type, $value ) );
 		}
 
 		return array_values( array_unique( array_filter( $ids ) ) );
@@ -163,7 +179,12 @@ class Reference_Resolver {
 			}
 		}
 
-		foreach ( get_post_meta( $destination_post_id ) as $meta_key => $meta_values ) {
+		// get_post_meta( $post_id ) with no key returns every row's value as
+		// a raw, un-unserialized string -- only enumerate keys from it, and
+		// re-fetch each value in single-value form (same as the _thumbnail_id
+		// case above), which is what actually unserializes array-valued
+		// fields like gallery/multi-select instead of leaving them as text.
+		foreach ( array_keys( get_post_meta( $destination_post_id ) ) as $meta_key ) {
 			$meta_key = (string) $meta_key;
 
 			if ( 0 === strpos( $meta_key, '_' ) ) {
@@ -176,8 +197,9 @@ class Reference_Resolver {
 				continue;
 			}
 
-			$value     = $meta_values[0];
-			$new_value = self::remap_value_by_field_type( $field_type, $value, $origin_site );
+			$taxonomy  = 'taxonomy' === $field_type ? ACF_Field_Inspector::get_taxonomy_for_meta( $destination_post_id, $meta_key ) : null;
+			$value     = get_post_meta( $destination_post_id, $meta_key, true );
+			$new_value = self::remap_value_by_field_type( $field_type, $value, $origin_site, $taxonomy );
 
 			if ( $new_value !== $value ) {
 				update_post_meta( $destination_post_id, $meta_key, $new_value );
@@ -449,7 +471,8 @@ class Reference_Resolver {
 				continue;
 			}
 
-			$new_value = self::remap_value_by_field_type( $field_type, $value, $origin_site );
+			$taxonomy  = 'taxonomy' === $field_type ? ACF_Field_Inspector::get_taxonomy_for_block_field( $field_key ) : null;
+			$new_value = self::remap_value_by_field_type( $field_type, $value, $origin_site, $taxonomy );
 
 			if ( $new_value !== $value ) {
 				$data[ $field_name ] = $new_value;
@@ -466,17 +489,19 @@ class Reference_Resolver {
 	 * Remap a single field value according to its ACF field type.
 	 *
 	 * Image/file fields hold a single attachment ID, gallery fields hold an
-	 * array of attachment IDs, post_object fields hold a single post ID. Any
+	 * array of attachment IDs, post_object fields hold a single post ID,
+	 * taxonomy fields hold a single term ID or an array of term IDs. Any
 	 * other field type is returned unchanged. An unresolvable reference is
 	 * cleared (not left pointing at a stale source-site ID, which could
-	 * coincidentally collide with an unrelated real destination post/attachment).
+	 * coincidentally collide with an unrelated real destination post/attachment/term).
 	 *
-	 * @param string $field_type  The ACF field type.
-	 * @param mixed  $value       The field's current value.
-	 * @param string $origin_site The origin site's URL.
+	 * @param string      $field_type  The ACF field type.
+	 * @param mixed       $value       The field's current value.
+	 * @param string      $origin_site The origin site's URL.
+	 * @param string|null $taxonomy    The taxonomy, when $field_type is "taxonomy".
 	 * @return mixed
 	 */
-	private static function remap_value_by_field_type( string $field_type, $value, string $origin_site ) {
+	private static function remap_value_by_field_type( string $field_type, $value, string $origin_site, ?string $taxonomy = null ) {
 		if ( in_array( $field_type, self::ATTACHMENT_FIELD_TYPES, true ) ) {
 			$source_id = is_numeric( $value ) ? (int) $value : 0;
 
@@ -520,6 +545,32 @@ class Reference_Resolver {
 			$destination_id = self::resolve_post_reference( $source_id, $origin_site );
 
 			return null !== $destination_id ? $destination_id : '';
+		}
+
+		if ( 'taxonomy' === $field_type ) {
+			if ( null === $taxonomy || '' === $taxonomy ) {
+				return $value;
+			}
+
+			$is_array   = is_array( $value );
+			$source_ids = $is_array ? $value : array( $value );
+			$mapped     = array();
+
+			foreach ( $source_ids as $item_id ) {
+				$source_id = is_numeric( $item_id ) ? (int) $item_id : 0;
+
+				if ( $source_id <= 0 ) {
+					continue;
+				}
+
+				$destination_id = self::resolve_term_reference( $source_id, $origin_site, $taxonomy );
+
+				if ( null !== $destination_id ) {
+					$mapped[] = $destination_id;
+				}
+			}
+
+			return $is_array ? $mapped : ( $mapped[0] ?? '' );
 		}
 
 		return $value;
@@ -662,6 +713,50 @@ class Reference_Resolver {
 			sprintf(
 				'Could not resolve post reference %1$d from %2$s: referenced post has not been migrated to this site.',
 				$source_post_id,
+				$origin_site
+			)
+		);
+
+		return null;
+	}
+
+	/**
+	 * Resolve a source term ID to its destination term ID via origin-tracking
+	 * term meta, backed by the per-batch cache. Deliberately does not
+	 * auto-create the referenced term if it hasn't been migrated yet -- same
+	 * rationale as resolve_post_reference(): a term referenced by an
+	 * arbitrary ACF field is "related content," not something this post's
+	 * own migration should be responsible for creating wholesale.
+	 *
+	 * @param int    $source_term_id The term's ID on the origin site.
+	 * @param string $origin_site    The origin site's URL.
+	 * @param string $taxonomy       The taxonomy the term belongs to.
+	 * @return int|null
+	 */
+	private static function resolve_term_reference( int $source_term_id, string $origin_site, string $taxonomy ): ?int {
+		$cache_key = $taxonomy . ':' . $source_term_id;
+
+		if ( array_key_exists( $cache_key, self::$term_reference_cache ) ) {
+			$destination_id = self::$term_reference_cache[ $cache_key ];
+
+			return $destination_id > 0 ? $destination_id : null;
+		}
+
+		$existing = Term_Origin::find_by_origin( $origin_site, array( $source_term_id ), $taxonomy );
+
+		if ( isset( $existing[ $source_term_id ] ) ) {
+			self::$term_reference_cache[ $cache_key ] = $existing[ $source_term_id ];
+
+			return $existing[ $source_term_id ];
+		}
+
+		self::$term_reference_cache[ $cache_key ] = 0;
+
+		self::log_unresolved(
+			sprintf(
+				'Could not resolve term reference %1$d (taxonomy %2$s) from %3$s: term has not been migrated to this site.',
+				$source_term_id,
+				$taxonomy,
 				$origin_site
 			)
 		);

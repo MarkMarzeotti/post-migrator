@@ -28,17 +28,9 @@ class ACF_Field_Inspector {
 	 * @return string|null The ACF field type (e.g. "image", "gallery", "post_object"), or null.
 	 */
 	public static function get_field_type_for_meta( int $post_id, string $meta_key ): ?string {
-		if ( ! function_exists( 'acf_get_field' ) ) {
-			return null;
-		}
+		$field = self::resolve_field( self::field_key_for_meta( $post_id, $meta_key ) );
 
-		$field_key = get_post_meta( $post_id, '_' . $meta_key, true );
-
-		if ( ! is_string( $field_key ) || '' === $field_key ) {
-			return null;
-		}
-
-		return self::resolve_field_type( $field_key );
+		return isset( $field['type'] ) ? (string) $field['type'] : null;
 	}
 
 	/**
@@ -49,26 +41,63 @@ class ACF_Field_Inspector {
 	 * @return string|null
 	 */
 	public static function get_field_type_for_block_field( string $field_key ): ?string {
-		if ( ! function_exists( 'acf_get_field' ) ) {
-			return null;
-		}
+		$field = self::resolve_field( $field_key );
 
-		return self::resolve_field_type( $field_key );
+		return isset( $field['type'] ) ? (string) $field['type'] : null;
 	}
 
 	/**
-	 * Resolve an ACF field key to its registered field type.
+	 * Get the taxonomy a "taxonomy"-type ACF postmeta field is bound to.
+	 *
+	 * @param int    $post_id  The post ID.
+	 * @param string $meta_key The meta key.
+	 * @return string|null
+	 */
+	public static function get_taxonomy_for_meta( int $post_id, string $meta_key ): ?string {
+		$field = self::resolve_field( self::field_key_for_meta( $post_id, $meta_key ) );
+
+		return isset( $field['taxonomy'] ) ? (string) $field['taxonomy'] : null;
+	}
+
+	/**
+	 * Get the taxonomy a "taxonomy"-type ACF block field is bound to.
 	 *
 	 * @param string $field_key The ACF field key.
 	 * @return string|null
 	 */
-	private static function resolve_field_type( string $field_key ): ?string {
-		$field = acf_get_field( $field_key );
+	public static function get_taxonomy_for_block_field( string $field_key ): ?string {
+		$field = self::resolve_field( $field_key );
 
-		if ( ! is_array( $field ) || empty( $field['type'] ) ) {
+		return isset( $field['taxonomy'] ) ? (string) $field['taxonomy'] : null;
+	}
+
+	/**
+	 * Look up the ACF field key stored alongside a postmeta value, via the
+	 * "_<meta_key>" sibling row ACF writes.
+	 *
+	 * @param int    $post_id  The post ID.
+	 * @param string $meta_key The meta key.
+	 * @return string
+	 */
+	private static function field_key_for_meta( int $post_id, string $meta_key ): string {
+		$field_key = get_post_meta( $post_id, '_' . $meta_key, true );
+
+		return is_string( $field_key ) ? $field_key : '';
+	}
+
+	/**
+	 * Resolve an ACF field key to its registered field definition.
+	 *
+	 * @param string $field_key The ACF field key.
+	 * @return array|null
+	 */
+	private static function resolve_field( string $field_key ): ?array {
+		if ( '' === $field_key || ! function_exists( 'acf_get_field' ) ) {
 			return null;
 		}
 
-		return (string) $field['type'];
+		$field = acf_get_field( $field_key );
+
+		return is_array( $field ) ? $field : null;
 	}
 }

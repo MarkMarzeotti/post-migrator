@@ -40,6 +40,7 @@ class Post_Packager {
 			// Cast to object so an empty map still encodes as a JSON object, not an array.
 			'meta'           => (object) self::package_meta( $post ),
 			'attachments'    => (object) self::collect_referenced_attachments( $post ),
+			'terms'          => (object) self::package_terms( $post ),
 		);
 	}
 
@@ -52,13 +53,20 @@ class Post_Packager {
 	public static function package_meta( \WP_Post $post ): array {
 		$meta = array();
 
-		foreach ( get_post_meta( $post->ID ) as $meta_key => $meta_values ) {
+		// get_post_meta( $post_id ) with no key returns every row's value as
+		// a raw, un-unserialized string -- unlike the single/multi-key form,
+		// which runs each value through maybe_unserialize(). Re-fetching per
+		// key (served from the already-primed meta cache, no extra queries)
+		// is what correctly reconstructs array-valued meta (e.g. ACF gallery
+		// or multi-select fields) instead of packaging their serialized form.
+		foreach ( array_keys( get_post_meta( $post->ID ) ) as $meta_key ) {
 			$meta_key = (string) $meta_key;
 
 			if ( Meta_Exclusion::is_excluded( $meta_key ) ) {
 				continue;
 			}
 
+			$meta_values       = get_post_meta( $post->ID, $meta_key, false );
 			$meta[ $meta_key ] = count( $meta_values ) > 1 ? $meta_values : $meta_values[0];
 		}
 
@@ -96,5 +104,75 @@ class Post_Packager {
 		}
 
 		return $attachments;
+	}
+
+	/**
+	 * Package every taxonomy term assigned to a post, plus each assigned
+	 * term's full ancestor chain (so hierarchical parents can be
+	 * resolved/created on the destination before their children), keyed by
+	 * taxonomy and sorted root-first by ancestor depth.
+	 *
+	 * @param \WP_Post $post The post to collect terms for.
+	 * @return array
+	 */
+	public static function package_terms( \WP_Post $post ): array {
+		$terms_by_taxonomy = array();
+
+		foreach ( get_object_taxonomies( $post->post_type, 'names' ) as $taxonomy ) {
+			$direct_terms = wp_get_post_terms( $post->ID, $taxonomy, array( 'fields' => 'all' ) );
+
+			if ( ! is_array( $direct_terms ) || empty( $direct_terms ) ) {
+				continue;
+			}
+
+			$direct_ids = array();
+
+			foreach ( $direct_terms as $term ) {
+				$direct_ids[] = $term->term_id;
+			}
+
+			$all_terms = array();
+
+			foreach ( $direct_terms as $term ) {
+				$all_terms[ $term->term_id ] = $term;
+
+				foreach ( get_ancestors( $term->term_id, $taxonomy, 'taxonomy' ) as $ancestor_id ) {
+					if ( isset( $all_terms[ $ancestor_id ] ) ) {
+						continue;
+					}
+
+					$ancestor = get_term( $ancestor_id, $taxonomy );
+
+					if ( $ancestor instanceof \WP_Term ) {
+						$all_terms[ $ancestor_id ] = $ancestor;
+					}
+				}
+			}
+
+			uasort(
+				$all_terms,
+				function ( \WP_Term $a, \WP_Term $b ) use ( $taxonomy ) {
+					return count( get_ancestors( $a->term_id, $taxonomy, 'taxonomy' ) ) <=> count( get_ancestors( $b->term_id, $taxonomy, 'taxonomy' ) );
+				}
+			);
+
+			$payloads = array();
+
+			foreach ( $all_terms as $term ) {
+				$payloads[] = array(
+					'source_term_id'        => $term->term_id,
+					'source_parent_term_id' => (int) $term->parent,
+					'name'                  => $term->name,
+					'slug'                  => $term->slug,
+					'taxonomy'              => $taxonomy,
+					'description'           => $term->description,
+					'directly_assigned'     => in_array( $term->term_id, $direct_ids, true ),
+				);
+			}
+
+			$terms_by_taxonomy[ $taxonomy ] = $payloads;
+		}
+
+		return $terms_by_taxonomy;
 	}
 }
