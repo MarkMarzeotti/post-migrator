@@ -36,6 +36,26 @@ abstract class Migration_Page {
 	 */
 	protected function __construct() {
 		add_action( 'admin_menu', array( $this, 'register_page' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+	}
+
+	/**
+	 * Enqueue the shared admin assets -- used by the review step's Quick
+	 * Edit-style toggle (the same script/stylesheet Dashboard_Page already
+	 * enqueues for its own page). Loaded on every step of this page, not
+	 * just "review", since $hook_suffix can't distinguish between them; the
+	 * script itself no-ops when its target markup isn't present.
+	 *
+	 * @param string $hook_suffix The current admin page hook suffix.
+	 * @return void
+	 */
+	public function enqueue_assets( $hook_suffix ) {
+		if ( 'tools_page_' . $this->page_slug() !== $hook_suffix ) {
+			return;
+		}
+
+		wp_enqueue_style( 'post-migrator-admin', POST_MIGRATOR_URL . 'dist/css/admin.css', array(), POST_MIGRATOR_VERSION );
+		wp_enqueue_script( 'post-migrator-admin', POST_MIGRATOR_URL . 'dist/js/admin.js', array(), POST_MIGRATOR_VERSION, true );
 	}
 
 	/**
@@ -128,9 +148,25 @@ abstract class Migration_Page {
 			<input type="hidden" name="action" value="<?php echo esc_attr( $this->confirm_action() ); ?>" />
 			<input type="hidden" name="batch_token" value="<?php echo esc_attr( $token ); ?>" />
 			<?php wp_nonce_field( $this->confirm_action() ); ?>
-			<?php foreach ( $batch['items'] as $origin_id => $item ) : ?>
-				<?php $this->render_review_row( (int) $origin_id, $item ); ?>
-			<?php endforeach; ?>
+			<table class="wp-list-table widefat fixed striped post-migrator-review-table">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Item', 'post-migrator' ); ?></th>
+						<th><?php esc_html_e( 'Slug', 'post-migrator' ); ?></th>
+						<th><?php esc_html_e( 'Action', 'post-migrator' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php
+					$index = 0;
+
+					foreach ( $batch['items'] as $origin_id => $item ) {
+						$this->render_review_item( (int) $origin_id, $item, 0 === $index % 2 );
+						++$index;
+					}
+					?>
+				</tbody>
+			</table>
 			<p>
 				<strong>
 					<?php
@@ -146,7 +182,7 @@ abstract class Migration_Page {
 		</form>
 		<?php
 		// Rendered as siblings of the main form above, never nested inside it
-		// -- see the comment in render_review_row() for why. Each one carries
+		// -- see the comment in render_review_controls() for why. Each one carries
 		// no visible content of its own; the matching row's search input and
 		// button (inside the main form) target it via their "form" attribute.
 		foreach ( array_keys( $batch['items'] ) as $origin_id ) :
@@ -184,13 +220,114 @@ abstract class Migration_Page {
 	}
 
 	/**
-	 * Render a single selected item's row on the review step.
+	 * Render a single selected item as a view row (title, slug, a Quick
+	 * Edit toggle, and a read-only summary of its currently chosen action)
+	 * plus a hidden inline-edit row beneath it holding the actual controls
+	 * -- the same view/edit row pair convention WordPress core's own post
+	 * list tables use for Quick Edit, though purely client-side here (no
+	 * AJAX save): everything still submits together via the confirm button
+	 * at the bottom of the page, same as before this was a table.
+	 *
+	 * @param int   $origin_id The item's origin post ID.
+	 * @param array $item      The item's match data.
+	 * @param bool  $alternate Whether this item should get the "alternate" (striped) background.
+	 * @return void
+	 */
+	private function render_review_item( int $origin_id, array $item, bool $alternate ) {
+		// Open Quick Edit by default right after a manual search just added
+		// fresh candidates for this item -- the user came from that search
+		// expecting to see (and pick) the result, not a freshly-collapsed
+		// row they'd have to reopen.
+		$start_open = ! empty( $item['manual_matches'] );
+
+		// core's CSS .striped rule stripes alternate raw <tr>s via
+		// :nth-child(odd); with two <tr>s per item (a view row and a
+		// hidden edit row), that would always land on the same row, not
+		// alternate per item. Using core's own "alternate" class instead
+		// (the pre-:nth-child convention WP_List_Table still falls back to
+		// for exactly this kind of non-uniform row count) stripes correctly.
+		$row_classes = array_filter(
+			array(
+				$start_open ? 'hidden' : '',
+				$alternate ? 'alternate' : '',
+			)
+		);
+		?>
+		<tr id="post-migrator-row-<?php echo esc_attr( (string) $origin_id ); ?>" class="<?php echo esc_attr( implode( ' ', $row_classes ) ); ?>">
+			<td>
+				<strong><?php echo esc_html( $item['title'] ); ?></strong>
+				<div class="row-actions">
+					<span class="edit">
+						<a href="#" class="editinline post-migrator-quick-edit" data-origin-id="<?php echo esc_attr( (string) $origin_id ); ?>">
+							<?php esc_html_e( 'Options', 'post-migrator' ); ?>
+						</a>
+					</span>
+				</div>
+			</td>
+			<td><code><?php echo esc_html( $item['slug'] ); ?></code></td>
+			<td class="post-migrator-summary" data-origin-id="<?php echo esc_attr( (string) $origin_id ); ?>">
+				<?php echo esc_html( $this->default_item_action_label( $item ) ); ?>
+			</td>
+		</tr>
+		<?php
+		$edit_row_classes = array_filter(
+			array(
+				'post-migrator-inline-edit',
+				$start_open ? '' : 'hidden',
+				$alternate ? 'alternate' : '',
+			)
+		);
+		?>
+		<tr id="post-migrator-edit-<?php echo esc_attr( (string) $origin_id ); ?>" class="<?php echo esc_attr( implode( ' ', $edit_row_classes ) ); ?>">
+			<td colspan="3">
+				<?php $this->render_review_controls( $origin_id, $item ); ?>
+				<p class="post-migrator-inline-edit-actions">
+					<button type="button" class="button button-primary post-migrator-quick-edit-save" data-origin-id="<?php echo esc_attr( (string) $origin_id ); ?>"><?php esc_html_e( 'Update', 'post-migrator' ); ?></button>
+					<button type="button" class="button post-migrator-quick-edit-cancel" data-origin-id="<?php echo esc_attr( (string) $origin_id ); ?>"><?php esc_html_e( 'Cancel', 'post-migrator' ); ?></button>
+				</p>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/**
+	 * Get the label text for whichever item_action option is selected by
+	 * default -- the same option Form_Handler falls back to when no radio
+	 * is submitted at all ('create_new') -- for the view row's initial
+	 * summary, before any Quick Edit interaction.
+	 *
+	 * @param array $item The item's match data.
+	 * @return string
+	 */
+	private function default_item_action_label( array $item ): string {
+		if ( null !== $item['origin_match'] ) {
+			return sprintf(
+				$this->origin_match_format(), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Plain sprintf, not output; the caller escapes the result.
+				$item['origin_match']['title'],
+				$item['origin_match']['status']
+			);
+		}
+
+		if ( null !== $item['slug_match'] ) {
+			return sprintf(
+				/* translators: 1: matched post title, 2: matched post status */
+				__( 'Overwrite matching post "%1$s" (%2$s)', 'post-migrator' ),
+				$item['slug_match']['title'],
+				$item['slug_match']['status']
+			);
+		}
+
+		return __( 'Create as a new post', 'post-migrator' );
+	}
+
+	/**
+	 * Render a single selected item's Quick Edit controls.
 	 *
 	 * @param int   $origin_id The item's origin post ID.
 	 * @param array $item      The item's match data.
 	 * @return void
 	 */
-	private function render_review_row( int $origin_id, array $item ) {
+	private function render_review_controls( int $origin_id, array $item ) {
 		// Deliberately not named "action[...]": the main form already has a
 		// hidden input named "action" (WordPress's own admin-post.php routing
 		// field). Both would normalize to the same top-level POST key, and
@@ -203,8 +340,6 @@ abstract class Migration_Page {
 		$has_overwrite_option = $has_confident || ! empty( $item['manual_matches'] );
 		?>
 		<fieldset class="post-migrator-review-row">
-			<legend><strong><?php echo esc_html( $item['title'] ); ?></strong> <code><?php echo esc_html( $item['slug'] ); ?></code></legend>
-
 			<?php if ( null !== $item['origin_match'] ) : ?>
 				<label>
 					<input type="radio" name="<?php echo esc_attr( $field_name ); ?>" value="overwrite:<?php echo esc_attr( (string) $item['origin_match']['destination_id'] ); ?>" checked="checked" />
@@ -238,7 +373,7 @@ abstract class Migration_Page {
 			<?php else : ?>
 				<p class="post-migrator-equal-options">
 					<label>
-						<input type="radio" name="<?php echo esc_attr( $field_name ); ?>" value="create_new" />
+						<input type="radio" name="<?php echo esc_attr( $field_name ); ?>" value="create_new" checked="checked" />
 						<?php esc_html_e( 'Create as a new post', 'post-migrator' ); ?>
 					</label>
 					<?php foreach ( $item['title_matches'] as $suggestion ) : ?>
@@ -282,9 +417,9 @@ abstract class Migration_Page {
 			// never a descendant, of another.
 			$search_form_id = 'post-migrator-search-' . $origin_id;
 			?>
-			<details>
-				<summary><?php esc_html_e( 'Search for a different post to overwrite', 'post-migrator' ); ?></summary>
-				<input type="search" name="search" form="<?php echo esc_attr( $search_form_id ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Title, slug, or ID', 'post-migrator' ); ?>" />
+			<p>
+				<label for="post-migrator-search-input-<?php echo esc_attr( (string) $origin_id ); ?>"><?php esc_html_e( 'Search for a different post to overwrite', 'post-migrator' ); ?></label><br />
+				<input type="search" id="post-migrator-search-input-<?php echo esc_attr( (string) $origin_id ); ?>" name="search" form="<?php echo esc_attr( $search_form_id ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Title, slug, or ID', 'post-migrator' ); ?>" />
 				<?php
 				submit_button(
 					__( 'Search', 'post-migrator' ),
@@ -294,7 +429,7 @@ abstract class Migration_Page {
 					array( 'form' => $search_form_id )
 				);
 				?>
-			</details>
+			</p>
 
 			<?php if ( $has_overwrite_option ) : ?>
 				<p>

@@ -25,23 +25,51 @@ class Post_Packager {
 		$author       = get_userdata( $post->post_author );
 		$author_login = $author ? $author->user_login : '';
 
+		list( $source_parent_post_id, $source_parent_post_type ) = self::package_parent( $post );
+
 		return array(
-			'post_type'      => $post->post_type,
-			'post_title'     => $post->post_title,
-			'post_content'   => $post->post_content,
-			'post_excerpt'   => $post->post_excerpt,
-			'post_status'    => $post->post_status,
-			'post_name'      => $post->post_name,
-			'post_date_gmt'  => $post->post_date_gmt,
-			'menu_order'     => $post->menu_order,
-			'comment_status' => $post->comment_status,
-			'ping_status'    => $post->ping_status,
-			'author_login'   => $author_login,
+			'post_type'               => $post->post_type,
+			'post_title'              => $post->post_title,
+			'post_content'            => $post->post_content,
+			'post_excerpt'            => $post->post_excerpt,
+			'post_status'             => $post->post_status,
+			'post_name'               => $post->post_name,
+			'post_date_gmt'           => $post->post_date_gmt,
+			'menu_order'              => $post->menu_order,
+			'comment_status'          => $post->comment_status,
+			'ping_status'             => $post->ping_status,
+			'author_login'            => $author_login,
+			'source_parent_post_id'   => $source_parent_post_id,
+			'source_parent_post_type' => $source_parent_post_type,
 			// Cast to object so an empty map still encodes as a JSON object, not an array.
-			'meta'           => (object) self::package_meta( $post ),
-			'attachments'    => (object) self::collect_referenced_attachments( $post ),
-			'terms'          => (object) self::package_terms( $post ),
+			'meta'                    => (object) self::package_meta( $post ),
+			'attachments'             => (object) self::collect_referenced_attachments( $post ),
+			'terms'                   => (object) self::package_terms( $post ),
 		);
+	}
+
+	/**
+	 * Package a post's immediate parent reference, for hierarchical post
+	 * types only. Only the immediate parent is packaged here (unlike
+	 * package_terms()'s full ancestor chain) because Post_Parent_Writer
+	 * resolves purely via an origin-tracking lookup -- it never creates a
+	 * missing ancestor -- so there is nothing an ancestor chain would add.
+	 *
+	 * @param \WP_Post $post The post to package the parent reference for.
+	 * @return array{0: int, 1: string} [source_parent_post_id, source_parent_post_type]
+	 */
+	private static function package_parent( \WP_Post $post ): array {
+		if ( ! is_post_type_hierarchical( $post->post_type ) || $post->post_parent <= 0 ) {
+			return array( 0, '' );
+		}
+
+		$parent = get_post( $post->post_parent );
+
+		if ( ! $parent ) {
+			return array( 0, '' );
+		}
+
+		return array( (int) $parent->ID, (string) $parent->post_type );
 	}
 
 	/**

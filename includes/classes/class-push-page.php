@@ -74,23 +74,55 @@ class Push_Page extends Migration_Page {
 			return;
 		}
 		?>
+		<?php
+		$items = array();
+
+		foreach ( $query->posts as $post ) {
+			$items[] = array(
+				'id'     => $post->ID,
+				'parent' => (int) $post->post_parent,
+				'post'   => $post,
+			);
+		}
+
+		$rows = Content_Browser::sort_hierarchically( $items, $post_type );
+		?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_push_select" />
 			<?php wp_nonce_field( 'post_migrator_push_select' ); ?>
 			<table class="widefat striped">
 				<thead>
 					<tr>
-						<th></th>
+						<th class="check-column"></th>
 						<th><?php esc_html_e( 'Title', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Status', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Modified', 'post-migrator' ); ?></th>
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ( $query->posts as $post ) : ?>
+					<?php foreach ( $rows as $row ) : ?>
+						<?php
+						$post  = $row['item']['post'];
+						$depth = $row['depth'];
+						?>
 						<tr>
-							<td><input type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $post->ID ); ?>" /></td>
-							<td><?php echo esc_html( get_the_title( $post ) ); ?></td>
+							<td class="check-column">
+								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $post->ID ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $post->ID ); ?>" />
+								<label for="post-migrator-cb-select-<?php echo esc_attr( (string) $post->ID ); ?>">
+									<span class="screen-reader-text">
+										<?php
+										/* translators: %s: post title */
+										printf( esc_html__( 'Select %s', 'post-migrator' ), esc_html( get_the_title( $post ) ) );
+										?>
+									</span>
+								</label>
+							</td>
+							<td>
+								<?php if ( $depth > 0 ) : ?>
+									<?php echo wp_kses( str_repeat( '<span aria-hidden="true">&#8212;</span> ', $depth ), array( 'span' => array( 'aria-hidden' => true ) ) ); ?>
+								<?php endif; ?>
+								<?php echo esc_html( get_the_title( $post ) ); ?>
+							</td>
 							<td><?php echo esc_html( $post->post_status ); ?></td>
 							<td><?php echo esc_html( get_the_modified_date( '', $post ) ); ?></td>
 						</tr>

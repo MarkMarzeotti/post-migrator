@@ -276,6 +276,7 @@ class REST_Controller {
 				'slug'      => $post->post_name,
 				'status'    => $post->post_status,
 				'modified'  => get_the_modified_date( '', $post ),
+				'parent'    => $post->post_parent,
 			);
 		}
 

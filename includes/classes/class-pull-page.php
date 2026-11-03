@@ -87,23 +87,55 @@ class Pull_Page extends Migration_Page {
 			return;
 		}
 		?>
+		<?php
+		$items = array();
+
+		foreach ( $results as $result ) {
+			$items[] = array(
+				'id'     => (int) $result['id'],
+				'parent' => (int) ( $result['parent'] ?? 0 ),
+				'result' => $result,
+			);
+		}
+
+		$rows = Content_Browser::sort_hierarchically( $items, $post_type );
+		?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_pull_select" />
 			<?php wp_nonce_field( 'post_migrator_pull_select' ); ?>
 			<table class="widefat striped">
 				<thead>
 					<tr>
-						<th></th>
+						<th class="check-column"></th>
 						<th><?php esc_html_e( 'Title', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Status', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Modified', 'post-migrator' ); ?></th>
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ( $results as $result ) : ?>
+					<?php foreach ( $rows as $row ) : ?>
+						<?php
+						$result = $row['item']['result'];
+						$depth  = $row['depth'];
+						?>
 						<tr>
-							<td><input type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $result['id'] ); ?>" /></td>
-							<td><?php echo esc_html( $result['title'] ); ?></td>
+							<td class="check-column">
+								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $result['id'] ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $result['id'] ); ?>" />
+								<label for="post-migrator-cb-select-<?php echo esc_attr( (string) $result['id'] ); ?>">
+									<span class="screen-reader-text">
+										<?php
+										/* translators: %s: post title */
+										printf( esc_html__( 'Select %s', 'post-migrator' ), esc_html( $result['title'] ) );
+										?>
+									</span>
+								</label>
+							</td>
+							<td>
+								<?php if ( $depth > 0 ) : ?>
+									<?php echo wp_kses( str_repeat( '<span aria-hidden="true">&#8212;</span> ', $depth ), array( 'span' => array( 'aria-hidden' => true ) ) ); ?>
+								<?php endif; ?>
+								<?php echo esc_html( $result['title'] ); ?>
+							</td>
 							<td><?php echo esc_html( $result['status'] ); ?></td>
 							<td><?php echo esc_html( $result['modified'] ); ?></td>
 						</tr>

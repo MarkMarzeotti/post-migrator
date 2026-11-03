@@ -32,6 +32,8 @@ class Post_Writer {
 			$results[] = self::apply_item( $origin_site, $item );
 		}
 
+		Post_Parent_Writer::write_batch( $origin_site, $items, $results );
+
 		return $results;
 	}
 
@@ -75,8 +77,6 @@ class Post_Writer {
 
 		// Slug transfers by default; "keep destination's current slug" means omitting
 		// post_name entirely so wp_update_post() leaves the existing value untouched.
-		// post_parent is intentionally never read here -- cross-site hierarchy mapping
-		// is future work (see the plan's Deferred section).
 		if ( 'create' === $action || 'source' === $slug_strategy ) {
 			if ( ! empty( $post['post_name'] ) ) {
 				$postarr['post_name'] = sanitize_title( (string) $post['post_name'] );

@@ -13,6 +13,21 @@
 	padding: 12px;
 }
 
+.post-migrator-inline-edit td {
+	background: #f6f7f7;
+}
+
+/* Override core's hover-only .row-actions visibility -- the Options link
+   should always be visible in this table, not just on row hover. */
+
+.post-migrator-review-table .row-actions {
+	position: static;
+}
+
+.post-migrator-inline-edit-actions {
+	margin-top: 12px;
+}
+
 .post-migrator-equal-options label {
 	display: inline-block;
 	margin-right: 12px;
