@@ -86,6 +86,8 @@ class Pull_Page extends Migration_Page {
 			<?php
 			return;
 		}
+
+		$diff_states = $this->resolve_diff_states( $results, $post_type );
 		?>
 		<?php
 		$items = array();
@@ -100,6 +102,7 @@ class Pull_Page extends Migration_Page {
 
 		$rows = Content_Browser::sort_hierarchically( $items, $post_type );
 		?>
+		<?php $this->render_include_unchanged_toggle(); ?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_pull_select" />
 			<?php wp_nonce_field( 'post_migrator_pull_select' ); ?>
@@ -108,6 +111,7 @@ class Pull_Page extends Migration_Page {
 					<tr>
 						<th class="check-column"></th>
 						<th><?php esc_html_e( 'Title', 'post-migrator' ); ?></th>
+						<th><?php esc_html_e( 'Changes', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Status', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Modified', 'post-migrator' ); ?></th>
 					</tr>
@@ -115,12 +119,14 @@ class Pull_Page extends Migration_Page {
 				<tbody>
 					<?php foreach ( $rows as $row ) : ?>
 						<?php
-						$result = $row['item']['result'];
-						$depth  = $row['depth'];
+						$result       = $row['item']['result'];
+						$depth        = $row['depth'];
+						$state        = $diff_states[ (int) $result['id'] ] ?? null;
+						$is_unchanged = Content_Hasher::STATE_UNCHANGED === $state;
 						?>
 						<tr>
 							<td class="check-column">
-								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $result['id'] ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $result['id'] ); ?>" />
+								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $result['id'] ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $result['id'] ); ?>" class="<?php echo esc_attr( $is_unchanged ? 'post-migrator-cb-unchanged' : '' ); ?>" <?php disabled( $is_unchanged ); ?> />
 								<label for="post-migrator-cb-select-<?php echo esc_attr( (string) $result['id'] ); ?>">
 									<span class="screen-reader-text">
 										<?php
@@ -136,6 +142,7 @@ class Pull_Page extends Migration_Page {
 								<?php endif; ?>
 								<?php echo esc_html( $result['title'] ); ?>
 							</td>
+							<td><?php $this->render_diff_state_cell( $state ); ?></td>
 							<td><?php echo esc_html( $result['status'] ); ?></td>
 							<td><?php echo esc_html( $result['modified'] ); ?></td>
 						</tr>
@@ -145,6 +152,47 @@ class Pull_Page extends Migration_Page {
 			<?php submit_button( __( 'Continue', 'post-migrator' ) ); ?>
 		</form>
 		<?php
+	}
+
+	/**
+	 * Diff this page's listed candidates against this (destination) site's
+	 * own content, for the "Changes" column. Called directly, with no REST
+	 * round trip -- the destination being compared against is this local
+	 * site.
+	 *
+	 * @param array  $results   The /pull/list results for the current page.
+	 * @param string $post_type The post type being listed.
+	 * @return array Map of source post ID to diff state.
+	 */
+	private function resolve_diff_states( array $results, string $post_type ): array {
+		$items = array();
+
+		foreach ( $results as $result ) {
+			if ( ! isset( $result['content_hash'], $result['modified_gmt'] ) ) {
+				continue;
+			}
+
+			$items[] = array(
+				'origin_id'    => (int) $result['id'],
+				'post_type'    => $post_type,
+				'slug'         => $result['slug'],
+				'content_hash' => $result['content_hash'],
+				'modified_gmt' => $result['modified_gmt'],
+			);
+		}
+
+		if ( empty( $items ) ) {
+			return array();
+		}
+
+		$diffs  = Content_Matcher::diff_batch( Target_Store::get_target_url(), $items );
+		$states = array();
+
+		foreach ( $diffs as $origin_id => $diff ) {
+			$states[ $origin_id ] = $diff['state'];
+		}
+
+		return $states;
 	}
 
 	/**

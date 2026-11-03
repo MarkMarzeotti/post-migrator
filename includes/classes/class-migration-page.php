@@ -515,6 +515,66 @@ abstract class Migration_Page {
 	}
 
 	/**
+	 * Render the Select step's escape-hatch toggle, which re-enables the
+	 * checkboxes of posts flagged "Unchanged" (disabled by default).
+	 *
+	 * Deliberately placed before the abstract method declarations below:
+	 * DemandDrive.Functions.RequiredPhpDocParams.MissingPhpDoc's docblock
+	 * lookup walks backward past "protected"/"public"/"static" but not
+	 * "abstract", so it misidentifies an abstract method's own modifier as
+	 * its docblock whenever a concrete (brace-bodied) method follows it
+	 * later in the class -- it only stays dormant while every abstract
+	 * method is last. Don't add a concrete method after the abstract block.
+	 *
+	 * @return void
+	 */
+	protected function render_include_unchanged_toggle() {
+		?>
+		<p>
+			<label>
+				<input type="checkbox" id="post-migrator-include-unchanged" />
+				<?php esc_html_e( 'Include unchanged posts anyway', 'post-migrator' ); ?>
+			</label>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render the Select step's "Changes" column cell for one row.
+	 *
+	 * @param string|null $state One of the Content_Hasher::STATE_* constants, or null if unknown.
+	 * @return void
+	 */
+	protected function render_diff_state_cell( ?string $state ) {
+		$labels = array(
+			Content_Hasher::STATE_NEW       => __( 'New', 'post-migrator' ),
+			Content_Hasher::STATE_UNCHANGED => __( 'Unchanged', 'post-migrator' ),
+			Content_Hasher::STATE_READY     => __( 'Ready to update', 'post-migrator' ),
+			Content_Hasher::STATE_CONFLICT  => __( 'Conflict', 'post-migrator' ),
+		);
+
+		if ( null === $state || ! isset( $labels[ $state ] ) ) {
+			esc_html_e( '—', 'post-migrator' );
+			return;
+		}
+
+		$class = '';
+		$title = '';
+
+		if ( Content_Hasher::STATE_CONFLICT === $state ) {
+			$class = 'post-migrator-diff-conflict';
+			$title = __( 'The destination post has newer changes than this one -- continuing would overwrite them.', 'post-migrator' );
+		} elseif ( Content_Hasher::STATE_UNCHANGED === $state ) {
+			$class = 'post-migrator-diff-unchanged';
+		}
+		?>
+		<span class="<?php echo esc_attr( $class ); ?>" <?php echo $title ? 'title="' . esc_attr( $title ) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Already escaped above; conditionally omitted when empty. ?>>
+			<?php echo esc_html( $labels[ $state ] ); ?>
+		</span>
+		<?php
+	}
+
+	/**
 	 * Render the step where the user selects content.
 	 *
 	 * @return void

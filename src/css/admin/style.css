@@ -36,3 +36,11 @@
 .post-migrator-error {
 	color: #b32d2e;
 }
+
+.post-migrator-diff-conflict {
+	color: #b32d2e;
+}
+
+.post-migrator-diff-unchanged {
+	color: #646970;
+}

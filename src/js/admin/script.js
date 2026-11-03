@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	});
 
 	initReviewQuickEdit();
+	initIncludeUnchangedToggle();
 });
 
 /**
@@ -84,6 +85,31 @@ function toggleReviewItem(originId, showEdit) {
 
 	viewRow.classList.toggle('hidden', showEdit);
 	editRow.classList.toggle('hidden', !showEdit);
+}
+
+/**
+ * Wire the Select step's "Include unchanged posts anyway" escape hatch:
+ * re-enables (and disables again) the checkboxes of posts flagged
+ * unchanged. Turning the toggle back off also unchecks them, so a
+ * force-included post never stays silently checked once the override is
+ * withdrawn.
+ */
+function initIncludeUnchangedToggle() {
+	const toggle = document.getElementById('post-migrator-include-unchanged');
+
+	if (!toggle) {
+		return;
+	}
+
+	toggle.addEventListener('change', () => {
+		document.querySelectorAll('.post-migrator-cb-unchanged').forEach((checkbox) => {
+			checkbox.disabled = !toggle.checked;
+
+			if (!toggle.checked) {
+				checkbox.checked = false;
+			}
+		});
+	});
 }
 
 /**

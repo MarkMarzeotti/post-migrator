@@ -111,6 +111,28 @@ class Connection_Client {
 	}
 
 	/**
+	 * Ask the target site how a batch of posts compares to its current
+	 * content, for the Select step's "Changes" column.
+	 *
+	 * @param string $target_url  The target site's URL.
+	 * @param string $target_key  The key to present to the target site.
+	 * @param string $origin_site This site's URL.
+	 * @param array  $items       Items to diff, each with origin_id, post_type, slug, content_hash, modified_gmt.
+	 * @return array
+	 */
+	public static function check_diff( string $target_url, string $target_key, string $origin_site, array $items ): array {
+		return self::post_json(
+			$target_url,
+			$target_key,
+			'/push/diff',
+			array(
+				'origin_site' => $origin_site,
+				'items'       => $items,
+			)
+		);
+	}
+
+	/**
 	 * Search the target site's content, for manual match override.
 	 *
 	 * @param string $target_url The target site's URL.

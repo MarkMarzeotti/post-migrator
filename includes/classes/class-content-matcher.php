@@ -25,12 +25,7 @@ class Content_Matcher {
 	 * @return array Map of origin post ID to match data.
 	 */
 	public static function match_batch( string $origin_site, array $items ): array {
-		$grouped = array();
-
-		foreach ( $items as $item ) {
-			$grouped[ $item['post_type'] ][] = $item;
-		}
-
+		$grouped = self::group_by_post_type( $items );
 		$results = array();
 
 		foreach ( $grouped as $post_type => $group ) {
@@ -47,37 +42,17 @@ class Content_Matcher {
 				continue;
 			}
 
-			$origin_map = Post_Origin::find_by_origin( $origin_site, wp_list_pluck( $group, 'origin_id' ), $post_type );
-
-			$needs_slug_lookup = array();
-
-			foreach ( $group as $item ) {
-				if ( ! isset( $origin_map[ $item['origin_id'] ] ) ) {
-					$needs_slug_lookup[] = $item['slug'];
-				}
-			}
-
-			$slug_map = self::find_by_slug( $needs_slug_lookup, $post_type );
+			$confident = self::match_confident( $origin_site, $group, $post_type );
 
 			foreach ( $group as $item ) {
 				$origin_id = $item['origin_id'];
+				$match     = $confident[ $origin_id ] ?? null;
 
-				if ( isset( $origin_map[ $origin_id ] ) ) {
+				if ( null !== $match ) {
 					$results[ $origin_id ] = array(
 						'post_type_registered' => true,
-						'origin_match'         => self::post_summary( $origin_map[ $origin_id ] ),
-						'slug_match'           => null,
-						'title_matches'        => array(),
-					);
-
-					continue;
-				}
-
-				if ( isset( $slug_map[ $item['slug'] ] ) ) {
-					$results[ $origin_id ] = array(
-						'post_type_registered' => true,
-						'origin_match'         => null,
-						'slug_match'           => self::post_summary( $slug_map[ $item['slug'] ] ),
+						'origin_match'         => 'origin' === $match['via'] ? self::post_summary( $match['destination_id'] ) : null,
+						'slug_match'           => 'slug' === $match['via'] ? self::post_summary( $match['destination_id'] ) : null,
 						'title_matches'        => array(),
 					);
 
@@ -94,6 +69,131 @@ class Content_Matcher {
 		}
 
 		return $results;
+	}
+
+	/**
+	 * Find confident matches (origin-tag, then slug) only, skipping the
+	 * title-suggestion fallback -- used by the diff feature, which has no
+	 * post to diff against from a mere suggestion.
+	 *
+	 * @param string $origin_site The origin site's URL.
+	 * @param array  $items       Items to match, each with origin_id, post_type, slug.
+	 * @return array Map of origin post ID to array( 'destination_id' => int, 'via' => 'origin'|'slug' ).
+	 */
+	public static function find_confident_matches( string $origin_site, array $items ): array {
+		$results = array();
+
+		foreach ( self::group_by_post_type( $items ) as $post_type => $group ) {
+			if ( post_type_exists( $post_type ) ) {
+				$results += self::match_confident( $origin_site, $group, $post_type );
+			}
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Diff a batch of origin posts against this (destination) site's
+	 * matching content, for the Select step's "Changes" column.
+	 *
+	 * @param string $origin_site The origin site's URL.
+	 * @param array  $items       Items to diff, each with origin_id, post_type, slug, content_hash, modified_gmt (the latter two describing the caller's own post).
+	 * @return array Map of origin post ID to array( 'state' => string, 'destination_id' => int|null ).
+	 */
+	public static function diff_batch( string $origin_site, array $items ): array {
+		$matches = self::find_confident_matches( $origin_site, $items );
+
+		$destination_ids = array_values( wp_list_pluck( $matches, 'destination_id' ) );
+
+		$destination_posts = empty( $destination_ids ) ? array() : get_posts(
+			array(
+				'post_type'      => 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'include'        => $destination_ids,
+			)
+		);
+
+		$destination_by_id = array();
+
+		foreach ( $destination_posts as $post ) {
+			$destination_by_id[ $post->ID ] = $post;
+		}
+
+		$hashes  = Content_Hasher::hash_batch( $destination_posts );
+		$results = array();
+
+		foreach ( $items as $item ) {
+			$match            = $matches[ $item['origin_id'] ] ?? null;
+			$destination_id   = null !== $match ? $match['destination_id'] : null;
+			$destination_post = null !== $destination_id ? ( $destination_by_id[ $destination_id ] ?? null ) : null;
+			$destination_hash = $destination_post ? ( $hashes[ $destination_post->ID ] ?? null ) : null;
+			$destination_mod  = $destination_post ? $destination_post->post_modified_gmt : null;
+
+			$results[ $item['origin_id'] ] = array(
+				'state'          => Content_Hasher::classify( $destination_hash, $item['content_hash'], $destination_mod, $item['modified_gmt'] ),
+				'destination_id' => $destination_id,
+			);
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Group a batch of items by post_type.
+	 *
+	 * @param array $items Items, each with at least a post_type key.
+	 * @return array Map of post_type to its items.
+	 */
+	private static function group_by_post_type( array $items ): array {
+		$grouped = array();
+
+		foreach ( $items as $item ) {
+			$grouped[ $item['post_type'] ][] = $item;
+		}
+
+		return $grouped;
+	}
+
+	/**
+	 * Find confident matches (origin-tag, then slug) for one post_type group.
+	 *
+	 * @param string $origin_site The origin site's URL.
+	 * @param array  $group       Items of a single post_type, each with origin_id, slug.
+	 * @param string $post_type   The post type.
+	 * @return array Map of origin post ID to array( 'destination_id' => int, 'via' => 'origin'|'slug' ).
+	 */
+	private static function match_confident( string $origin_site, array $group, string $post_type ): array {
+		$origin_map = Post_Origin::find_by_origin( $origin_site, wp_list_pluck( $group, 'origin_id' ), $post_type );
+
+		$needs_slug_lookup = array();
+
+		foreach ( $group as $item ) {
+			if ( ! isset( $origin_map[ $item['origin_id'] ] ) ) {
+				$needs_slug_lookup[] = $item['slug'];
+			}
+		}
+
+		$slug_map = self::find_by_slug( $needs_slug_lookup, $post_type );
+		$matches  = array();
+
+		foreach ( $group as $item ) {
+			$origin_id = $item['origin_id'];
+
+			if ( isset( $origin_map[ $origin_id ] ) ) {
+				$matches[ $origin_id ] = array(
+					'destination_id' => $origin_map[ $origin_id ],
+					'via'            => 'origin',
+				);
+			} elseif ( isset( $slug_map[ $item['slug'] ] ) ) {
+				$matches[ $origin_id ] = array(
+					'destination_id' => $slug_map[ $item['slug'] ],
+					'via'            => 'slug',
+				);
+			}
+		}
+
+		return $matches;
 	}
 
 	/**

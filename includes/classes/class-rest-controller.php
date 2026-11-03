@@ -83,6 +83,16 @@ class REST_Controller {
 
 		register_rest_route(
 			self::API_NAMESPACE,
+			'/push/diff',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_push_diff' ),
+				'permission_callback' => array( self::class, 'authenticate_push_request' ),
+			)
+		);
+
+		register_rest_route(
+			self::API_NAMESPACE,
 			'/push/search',
 			array(
 				'methods'             => 'POST',
@@ -191,6 +201,59 @@ class REST_Controller {
 	}
 
 	/**
+	 * Handle the batch diff route, used by a pushing site to find out how
+	 * each of its candidate posts compares to this site's current content,
+	 * for the Select step's "Changes" column.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function handle_push_diff( \WP_REST_Request $request ) {
+		$params      = $request->get_json_params();
+		$origin_site = isset( $params['origin_site'] ) ? (string) $params['origin_site'] : '';
+		$items       = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : array();
+
+		if ( '' === $origin_site || empty( $items ) ) {
+			return new \WP_Error(
+				'post_migrator_invalid_request',
+				__( 'origin_site and items are required.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( count( $items ) > 100 ) {
+			return new \WP_Error(
+				'post_migrator_too_many_items',
+				__( 'No more than 100 items may be diffed at once.', 'post-migrator' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$sanitized = array();
+
+		foreach ( $items as $item ) {
+			if ( ! isset( $item['origin_id'], $item['post_type'], $item['content_hash'], $item['modified_gmt'] ) ) {
+				continue;
+			}
+
+			$sanitized[] = array(
+				'origin_id'    => (int) $item['origin_id'],
+				'post_type'    => sanitize_key( $item['post_type'] ),
+				'slug'         => isset( $item['slug'] ) ? sanitize_title( (string) $item['slug'] ) : '',
+				'content_hash' => sanitize_text_field( (string) $item['content_hash'] ),
+				'modified_gmt' => sanitize_text_field( (string) $item['modified_gmt'] ),
+			);
+		}
+
+		// Cast to object so an empty or coincidentally sequential-from-zero
+		// set of origin IDs still encodes as a JSON object, not an array.
+		return new \WP_REST_Response(
+			array( 'diffs' => (object) Content_Matcher::diff_batch( $origin_site, $sanitized ) ),
+			200
+		);
+	}
+
+	/**
 	 * Handle the manual-override search route, used by a pushing site to let
 	 * the user pick a specific post on this site to overwrite.
 	 *
@@ -266,17 +329,20 @@ class REST_Controller {
 		}
 
 		$query   = Content_Browser::query_posts( $post_type, $status, $search );
+		$hashes  = Content_Hasher::hash_batch( $query->posts );
 		$results = array();
 
 		foreach ( $query->posts as $post ) {
 			$results[] = array(
-				'id'        => $post->ID,
-				'post_type' => $post->post_type,
-				'title'     => get_the_title( $post ),
-				'slug'      => $post->post_name,
-				'status'    => $post->post_status,
-				'modified'  => get_the_modified_date( '', $post ),
-				'parent'    => $post->post_parent,
+				'id'           => $post->ID,
+				'post_type'    => $post->post_type,
+				'title'        => get_the_title( $post ),
+				'slug'         => $post->post_name,
+				'status'       => $post->post_status,
+				'modified'     => get_the_modified_date( '', $post ),
+				'modified_gmt' => $post->post_modified_gmt,
+				'content_hash' => $hashes[ $post->ID ],
+				'parent'       => $post->post_parent,
 			);
 		}
 

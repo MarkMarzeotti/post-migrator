@@ -73,6 +73,17 @@ class Push_Page extends Migration_Page {
 			<?php
 			return;
 		}
+
+		$diff_states = $this->fetch_diff_states( $query->posts );
+
+		if ( null === $diff_states ) {
+			?>
+			<div class="notice notice-warning inline">
+				<p><?php esc_html_e( 'Could not check which posts have changed on the target site. Showing all posts as selectable.', 'post-migrator' ); ?></p>
+			</div>
+			<?php
+			$diff_states = array();
+		}
 		?>
 		<?php
 		$items = array();
@@ -87,6 +98,7 @@ class Push_Page extends Migration_Page {
 
 		$rows = Content_Browser::sort_hierarchically( $items, $post_type );
 		?>
+		<?php $this->render_include_unchanged_toggle(); ?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="post_migrator_push_select" />
 			<?php wp_nonce_field( 'post_migrator_push_select' ); ?>
@@ -95,6 +107,7 @@ class Push_Page extends Migration_Page {
 					<tr>
 						<th class="check-column"></th>
 						<th><?php esc_html_e( 'Title', 'post-migrator' ); ?></th>
+						<th><?php esc_html_e( 'Changes', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Status', 'post-migrator' ); ?></th>
 						<th><?php esc_html_e( 'Modified', 'post-migrator' ); ?></th>
 					</tr>
@@ -102,12 +115,14 @@ class Push_Page extends Migration_Page {
 				<tbody>
 					<?php foreach ( $rows as $row ) : ?>
 						<?php
-						$post  = $row['item']['post'];
-						$depth = $row['depth'];
+						$post         = $row['item']['post'];
+						$depth        = $row['depth'];
+						$state        = $diff_states[ $post->ID ] ?? null;
+						$is_unchanged = Content_Hasher::STATE_UNCHANGED === $state;
 						?>
 						<tr>
 							<td class="check-column">
-								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $post->ID ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $post->ID ); ?>" />
+								<input id="post-migrator-cb-select-<?php echo esc_attr( (string) $post->ID ); ?>" type="checkbox" name="post_ids[]" value="<?php echo esc_attr( (string) $post->ID ); ?>" class="<?php echo esc_attr( $is_unchanged ? 'post-migrator-cb-unchanged' : '' ); ?>" <?php disabled( $is_unchanged ); ?> />
 								<label for="post-migrator-cb-select-<?php echo esc_attr( (string) $post->ID ); ?>">
 									<span class="screen-reader-text">
 										<?php
@@ -123,6 +138,7 @@ class Push_Page extends Migration_Page {
 								<?php endif; ?>
 								<?php echo esc_html( get_the_title( $post ) ); ?>
 							</td>
+							<td><?php $this->render_diff_state_cell( $state ); ?></td>
 							<td><?php echo esc_html( $post->post_status ); ?></td>
 							<td><?php echo esc_html( get_the_modified_date( '', $post ) ); ?></td>
 						</tr>
@@ -132,6 +148,44 @@ class Push_Page extends Migration_Page {
 			<?php submit_button( __( 'Continue', 'post-migrator' ) ); ?>
 		</form>
 		<?php
+	}
+
+	/**
+	 * Ask the target site how this page's candidate posts compare to its
+	 * current content, for the "Changes" column.
+	 *
+	 * @param \WP_Post[] $posts The candidate posts being listed.
+	 * @return array|null Map of post ID to diff state, or null if the target couldn't be checked.
+	 */
+	private function fetch_diff_states( array $posts ): ?array {
+		$hashes = Content_Hasher::hash_batch( $posts );
+		$items  = array();
+
+		foreach ( $posts as $post ) {
+			$items[] = array(
+				'origin_id'    => $post->ID,
+				'post_type'    => $post->post_type,
+				'slug'         => $post->post_name,
+				'content_hash' => $hashes[ $post->ID ],
+				'modified_gmt' => $post->post_modified_gmt,
+			);
+		}
+
+		$result = Connection_Client::check_diff( Target_Store::get_target_url(), Target_Store::get_target_key(), home_url(), $items );
+
+		if ( ! $result['success'] ) {
+			return null;
+		}
+
+		$diffs  = (array) ( $result['diffs'] ?? array() );
+		$states = array();
+
+		foreach ( $posts as $post ) {
+			$diff                = (array) ( $diffs[ (string) $post->ID ] ?? array() );
+			$states[ $post->ID ] = $diff['state'] ?? null;
+		}
+
+		return $states;
 	}
 
 	/**
