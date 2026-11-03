@@ -90,6 +90,18 @@ class Connection_Client {
 	}
 
 	/**
+	 * Fetch the target site's migration-relevant setup, for the Select
+	 * step's compatibility warning.
+	 *
+	 * @param string $target_url The target site's URL.
+	 * @param string $target_key The key to present to the target site.
+	 * @return array
+	 */
+	public static function fetch_site_profile( string $target_url, string $target_key ): array {
+		return self::post_json( $target_url, $target_key, '/compat', array(), 15 );
+	}
+
+	/**
 	 * Ask the target site which of a batch of posts already exist on it.
 	 *
 	 * @param string $target_url  The target site's URL.

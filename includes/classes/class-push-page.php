@@ -39,6 +39,7 @@ class Push_Page extends Migration_Page {
 		?>
 		<h2><?php esc_html_e( 'Select Content to Push', 'post-migrator' ); ?></h2>
 		<?php $this->render_target_banner(); ?>
+		<?php $this->render_compat_notice( $post_type ); ?>
 		<form method="get" action="<?php echo esc_url( admin_url( 'tools.php' ) ); ?>">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
 			<p>

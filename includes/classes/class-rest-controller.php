@@ -71,6 +71,18 @@ class REST_Controller {
 			)
 		);
 
+		// Gated by the key alone, like /ping: both push and pull need the
+		// other site's profile, and it lists only post type/taxonomy slugs.
+		register_rest_route(
+			self::API_NAMESPACE,
+			'/compat',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_compat' ),
+				'permission_callback' => array( self::class, 'authenticate_request' ),
+			)
+		);
+
 		register_rest_route(
 			self::API_NAMESPACE,
 			'/push/match',
@@ -147,6 +159,17 @@ class REST_Controller {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Handle the site-compatibility route, used by the other site's Select
+	 * step to warn about setup mismatches before migrating.
+	 *
+	 * @param \WP_REST_Request $request The REST request.
+	 * @return \WP_REST_Response
+	 */
+	public function handle_compat( \WP_REST_Request $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Required by the REST callback signature.
+		return new \WP_REST_Response( array( 'profile' => Site_Profile::describe() ), 200 );
 	}
 
 	/**

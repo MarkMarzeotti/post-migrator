@@ -575,6 +575,99 @@ abstract class Migration_Page {
 	}
 
 	/**
+	 * Render a non-blocking, dismissible warning listing setup mismatches
+	 * between the two sites that affect migrating this post type.
+	 *
+	 * Renders nothing when the sites are compatible, or when the other site
+	 * couldn't be reached (each Select step already surfaces that itself).
+	 *
+	 * @param string $post_type The post type being migrated.
+	 * @return void
+	 */
+	protected function render_compat_notice( string $post_type ) {
+		$remote = $this->get_remote_profile();
+
+		if ( $remote['outdated'] ) {
+			?>
+			<div class="notice notice-warning inline is-dismissible">
+				<p><?php esc_html_e( 'The other site runs an older version of Post Migrator, so compatibility could not be checked.', 'post-migrator' ); ?></p>
+			</div>
+			<?php
+			return;
+		}
+
+		if ( null === $remote['profile'] ) {
+			return;
+		}
+
+		list( $source, $destination ) = $this->compat_sides( Site_Profile::describe(), $remote['profile'] );
+		$warnings                     = Site_Profile::compare( $source, $destination, $post_type );
+
+		if ( empty( $warnings ) ) {
+			return;
+		}
+		?>
+		<div class="notice notice-warning inline is-dismissible">
+			<p><strong><?php esc_html_e( 'Possible compatibility issues between the two sites:', 'post-migrator' ); ?></strong></p>
+			<ul>
+				<?php foreach ( $warnings as $warning ) : ?>
+					<li><?php echo esc_html( $warning ); ?></li>
+				<?php endforeach; ?>
+			</ul>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Order the local and remote profiles as (source, destination) for this
+	 * flow's direction. Push reads locally and writes remotely; Pull overrides.
+	 *
+	 * @param array $local  This site's profile.
+	 * @param array $remote The other site's profile.
+	 * @return array Two-element list: source profile, destination profile.
+	 */
+	protected function compat_sides( array $local, array $remote ): array {
+		return array( $local, $remote );
+	}
+
+	/**
+	 * Fetch the other site's profile, cached briefly so filter changes on the
+	 * Select step don't each cost a round trip. The cache key covers the
+	 * target URL and key, so re-targeting invalidates it automatically.
+	 *
+	 * @return array { outdated: bool, profile: array|null }
+	 */
+	private function get_remote_profile(): array {
+		$target_url = Target_Store::get_target_url();
+		$target_key = Target_Store::get_target_key();
+		$cache_key  = 'post_migrator_compat_' . hash( 'sha256', $target_url . '|' . $target_key );
+		$cached     = get_transient( $cache_key );
+
+		if ( is_array( $cached ) ) {
+			return array(
+				'outdated' => false,
+				'profile'  => $cached,
+			);
+		}
+
+		$result = Connection_Client::fetch_site_profile( $target_url, $target_key );
+
+		if ( ! $result['success'] || ! isset( $result['profile'] ) || ! is_array( $result['profile'] ) ) {
+			return array(
+				'outdated' => 'connection_version_mismatch' === $result['code'],
+				'profile'  => null,
+			);
+		}
+
+		set_transient( $cache_key, $result['profile'], 10 * MINUTE_IN_SECONDS );
+
+		return array(
+			'outdated' => false,
+			'profile'  => $result['profile'],
+		);
+	}
+
+	/**
 	 * Render the step where the user selects content.
 	 *
 	 * @return void

@@ -39,6 +39,7 @@ class Pull_Page extends Migration_Page {
 		?>
 		<h2><?php esc_html_e( 'Select Content to Pull', 'post-migrator' ); ?></h2>
 		<?php $this->render_target_banner(); ?>
+		<?php $this->render_compat_notice( $post_type ); ?>
 		<form method="get" action="<?php echo esc_url( admin_url( 'tools.php' ) ); ?>">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::PAGE_SLUG ); ?>" />
 			<p>
@@ -314,6 +315,18 @@ class Pull_Page extends Migration_Page {
 	protected function site_banner_format(): string {
 		/* translators: %s: the source site's URL */
 		return esc_html__( 'Source site: %s', 'post-migrator' );
+	}
+
+	/**
+	 * Order the profiles for a pull: the remote site is the source, this
+	 * site is the destination.
+	 *
+	 * @param array $local  This site's profile.
+	 * @param array $remote The other site's profile.
+	 * @return array Two-element list: source profile, destination profile.
+	 */
+	protected function compat_sides( array $local, array $remote ): array {
+		return array( $remote, $local );
 	}
 
 	/**

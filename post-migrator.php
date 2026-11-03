@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Post Migrator
  * Description:       Tools for migrating posts.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Author:            Mark Marzeotti
  * Author URI:        https://markmarzeotti.com
  * Text Domain:       post-migrator
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'POST_MIGRATOR_VERSION', '0.1.0' );
+define( 'POST_MIGRATOR_VERSION', '0.2.0' );
 define( 'POST_MIGRATOR_DIR', plugin_dir_path( __FILE__ ) );
 define( 'POST_MIGRATOR_URL', plugin_dir_url( __FILE__ ) );
 
